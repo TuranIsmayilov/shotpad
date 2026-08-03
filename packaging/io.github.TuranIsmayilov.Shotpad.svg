@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7f5af0"/>
+      <stop offset="1" stop-color="#2cb67d"/>
+    </linearGradient>
+    <linearGradient id="plate" x1="0.1" y1="0" x2="0.5" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#eaeef6"/>
+    </linearGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34c88a"/>
+      <stop offset="1" stop-color="#1f9e6b"/>
+    </linearGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="5" stdDeviation="7" flood-color="#101733" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect width="256" height="256" rx="60" fill="url(#bg)"/>
+  <g filter="url(#sh)">
+    <rect x="52" y="80" width="152" height="96" rx="18" fill="url(#plate)"/>
+  </g>
+  <circle cx="86" cy="100" r="10" fill="#f7b32b"/>
+  <path d="M52 140l40-32 32 28 28-20 52 30v12a18 18 0 0 1-18 18H70a18 18 0 0 1-18-18z"
+        fill="#8fd9bb"/>
+  <path d="M52 154l48-30 28 24 26-16 50 26a18 18 0 0 1-18 18H70a18 18 0 0 1-18-18z"
+        fill="url(#hill)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round">
+    <path d="M40 96V80a14 14 0 0 1 14-14h16"/>
+    <path d="M186 66h16a14 14 0 0 1 14 14v16"/>
+    <path d="M216 160v16a14 14 0 0 1-14 14h-16"/>
+    <path d="M70 190h-16a14 14 0 0 1-14-14v-16"/>
+  </g>
+</svg>

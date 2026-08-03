@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shotpad"
+version = "1.0.0"
+description = "Capture, annotate and beautify screenshots on any Linux desktop"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-3.0-or-later" }
+authors = [
+    { name = "Turan Ismayilov", email = "79365690+TuranIsmayilov@users.noreply.github.com" },
+]
+keywords = ["screenshot", "annotation", "linux", "wayland", "x11", "gnome", "kde", "xfce", "mate"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Graphics :: Capture :: Screen Capture",
+    "Topic :: Multimedia :: Graphics :: Editors",
+]
+dependencies = [
+    # Cap at the major version only. Each PySide6 release also caps the Python
+    # it accepts (6.9 refuses Python 3.14, 6.7 refuses 3.13), so pinning to a
+    # narrow minor range silently makes Shotpad uninstallable on newer
+    # interpreters - which is exactly what a "<6.10" pin did here.
+    "PySide6-Essentials>=6.7,<7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pyflakes"]
+
+[project.urls]
+Homepage = "https://github.com/TuranIsmayilov/shotpad"
+Source = "https://github.com/TuranIsmayilov/shotpad"
+Issues = "https://github.com/TuranIsmayilov/shotpad/issues"
+Releases = "https://github.com/TuranIsmayilov/shotpad/releases"
+
+[project.scripts]
+shotpad = "shotpad.app:main"
+
+[tool.setuptools.packages.find]
+include = ["shotpad*"]
+
+# Ships the AppStream metainfo inside the wheel, so `shotpad --install` can
+# write it out even when Shotpad was installed with pip and there is no
+# packaging/ directory anywhere.
+[tool.setuptools.package-data]
+shotpad = ["data/*.metainfo.xml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,56 @@
+#!/bin/bash
+# Shotpad AppImage entry point.
+#
+# The bundle carries its own relocatable CPython and Qt, so the job here is to
+# point the interpreter and the dynamic loader at the bundle - and, just as
+# importantly, to keep the host's desktop integration working: the theme
+# plugins, the D-Bus session bus and the XDG portals all live outside.
+
+set -e
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+export APPDIR="${HERE}"
+
+PY_DIR="${HERE}/usr/python"
+QT_DIR="$("${PY_DIR}/bin/python3" -c 'import PySide6,os;print(os.path.dirname(PySide6.__file__))' 2>/dev/null || echo "")"
+
+# --- library path ----------------------------------------------------------
+# The bundled libraries come first, but the host's directories stay on the path
+# so graphics drivers (libGL, mesa, the Nvidia stack) are still found.
+export LD_LIBRARY_PATH="${PY_DIR}/lib:${QT_DIR}/Qt/lib:${HERE}/usr/lib:${LD_LIBRARY_PATH}"
+
+# --- Qt --------------------------------------------------------------------
+if [ -n "${QT_DIR}" ]; then
+    export QT_PLUGIN_PATH="${QT_DIR}/Qt/plugins"
+    export QT_QPA_PLATFORM_PLUGIN_PATH="${QT_DIR}/Qt/plugins/platforms"
+fi
+
+# Shotpad paints its own theme, so the host's Qt style plugins (Breeze on KDE,
+# qt5ct/qt6ct elsewhere) are not needed and are a common source of ABI
+# mismatches inside a bundle. Fusion is built into Qt.
+export QT_STYLE_OVERRIDE=""
+unset QT_STYLE_OVERRIDE
+export QT_QPA_PLATFORMTHEME="${QT_QPA_PLATFORMTHEME_OVERRIDE:-}"
+
+# Let the user force a platform: SHOTPAD_QT_PLATFORM=xcb is the escape hatch
+# if a compositor misbehaves with the native Wayland plugin.
+if [ -n "${SHOTPAD_QT_PLATFORM}" ]; then
+    export QT_QPA_PLATFORM="${SHOTPAD_QT_PLATFORM}"
+elif [ -z "${QT_QPA_PLATFORM}" ] && [ -n "${WAYLAND_DISPLAY}" ]; then
+    # Prefer native Wayland, but fall back to XWayland automatically if the
+    # Wayland plugin cannot start.
+    export QT_QPA_PLATFORM="wayland;xcb"
+fi
+
+# --- Python ----------------------------------------------------------------
+export PYTHONHOME="${PY_DIR}"
+export PYTHONPATH="${HERE}/usr/app:${PYTHONPATH}"
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONNOUSERSITE=1
+
+# --- XDG -------------------------------------------------------------------
+# Prepend, never replace: the desktop's own icon and MIME data must stay
+# reachable, and the portal lives on the host's session bus.
+export XDG_DATA_DIRS="${HERE}/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+
+exec "${PY_DIR}/bin/python3" -s -m shotpad "$@"

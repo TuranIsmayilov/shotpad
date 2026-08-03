@@ -1,0 +1,28 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Shotpad
+GenericName=Screenshot Editor
+Comment=Capture, annotate and beautify screenshots
+Keywords=screenshot;capture;screen;snip;annotate;arrow;blur;redact;crop;padding;
+Exec=shotpad %f
+TryExec=shotpad
+Icon=io.github.TuranIsmayilov.Shotpad
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;
+MimeType=image/png;image/jpeg;image/webp;image/bmp;image/tiff;image/gif;
+StartupNotify=true
+StartupWMClass=io.github.TuranIsmayilov.Shotpad
+Actions=Area;Screen;Window;
+
+[Desktop Action Area]
+Name=Capture an area
+Exec=shotpad --area
+
+[Desktop Action Screen]
+Name=Capture the whole screen
+Exec=shotpad --screen
+
+[Desktop Action Window]
+Name=Capture a window
+Exec=shotpad --window

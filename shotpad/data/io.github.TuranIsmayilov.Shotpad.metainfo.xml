@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.TuranIsmayilov.Shotpad</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>Shotpad</name>
+  <summary>Capture, annotate and beautify screenshots</summary>
+
+  <developer id="io.github.turanismayilov">
+    <name>Turan Ismayilov</name>
+  </developer>
+
+  <url type="homepage">https://github.com/TuranIsmayilov/shotpad</url>
+  <url type="bugtracker">https://github.com/TuranIsmayilov/shotpad/issues</url>
+  <url type="vcs-browser">https://github.com/TuranIsmayilov/shotpad</url>
+
+  <description>
+    <p>
+      Shotpad takes a screenshot and gives you everything you need to make it
+      presentable: padding, gradient or image backgrounds, rounded corners,
+      drop shadows, a subtle tilt, and a full set of annotation tools.
+    </p>
+    <p>Annotation tools:</p>
+    <ul>
+      <li>Freehand pen and highlighter</li>
+      <li>Arrows, lines, rectangles and ellipses</li>
+      <li>Text labels with an outline or a background plate</li>
+      <li>Auto-incrementing numbered badges for step-by-step guides</li>
+      <li>Blur, pixelate or block out anything private</li>
+      <li>Crop, rotate and flip</li>
+    </ul>
+    <p>
+      Capture works the same on GNOME, KDE Plasma, XFCE and MATE, on both X11
+      and Wayland. Shotpad talks to the XDG desktop portal where that is the
+      only option, and falls back through grim, the desktop's own screenshot
+      tool, maim, scrot and ImageMagick as needed. Area selection always uses
+      Shotpad's own overlay, so the experience does not change when you change
+      desktops.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.TuranIsmayilov.Shotpad.desktop</launchable>
+
+  <categories>
+    <category>Graphics</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>screenshot</keyword>
+    <keyword>annotate</keyword>
+    <keyword>capture</keyword>
+    <keyword>redact</keyword>
+    <keyword>blur</keyword>
+  </keywords>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+  </requires>
+
+  <provides>
+    <binary>shotpad</binary>
+  </provides>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.0.0" date="2026-07-26">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>
