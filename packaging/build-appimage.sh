@@ -467,7 +467,17 @@ ARCH="${AI_ARCH}" "${APPIMAGETOOL}" --appimage-extract-and-run \
     || die "appimagetool failed."
 
 chmod +x "${OUTPUT}"
+
+# Checksum, so a download can be verified. Written with a bare filename rather
+# than the full path, which is what `sha256sum -c` expects to find next to it.
+(cd "${OUT_DIR}" && sha256sum "${OUTPUT##*/}" > "${OUTPUT##*/}.sha256") \
+    || die "Could not write the checksum."
+
 log "Done: ${OUTPUT}  ($(du -h "${OUTPUT}" | cut -f1))"
 echo
 echo "  Try it:      ${OUTPUT} --list-backends"
 echo "  Install it:  ${OUTPUT} --install   (adds a menu entry for the current user)"
+echo "  Checksum:    ${OUTPUT}.sha256"
+echo
+echo "  Release it:  gh release create v${VERSION} --title \"Shotpad ${VERSION}\" \\"
+echo "                 ${OUTPUT} ${OUTPUT}.sha256"
