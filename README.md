@@ -166,6 +166,70 @@ shotpad
 
 ---
 
+## Updating
+
+Shotpad never checks for updates on its own and never phones home, so new
+versions are something you pull when you want them. `shotpad --version` says
+what you are on; [Releases](https://github.com/TuranIsmayilov/shotpad/releases)
+says what is current.
+
+Your preferences live in `~/.config/Shotpad/Shotpad.conf`, outside the app, so
+none of this touches them.
+
+### pipx
+
+```bash
+pipx upgrade shotpad
+```
+
+That re-pulls the git repository and rebuilds. If it reports nothing to do
+even though the release is newer — pip can decide a direct URL is already
+satisfied when the version number has not moved — force it:
+
+```bash
+pipx install --force git+https://github.com/TuranIsmayilov/shotpad.git
+```
+
+The desktop entry points at pipx's stable `~/.local/bin/shotpad` either way, so
+there is nothing to re-register.
+
+### AppImage
+
+Download the new file from
+[Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
+
+```bash
+chmod +x Shotpad-1.1.0-x86_64.AppImage
+./Shotpad-1.1.0-x86_64.AppImage --install   # re-point the menu entry
+rm Shotpad-1.0.0-x86_64.AppImage            # the old one, once you are happy
+```
+
+**Re-running `--install` matters here.** The menu entry and any keyboard
+shortcut hold the *absolute path* of the bundle you installed from, and the
+version is in the filename — so a new download leaves them pointing at the old
+file. `--install` rewrites them; a custom Print Screen binding you added
+yourself has to be updated by hand.
+
+To skip that dance entirely, keep the bundle at a fixed path and overwrite it:
+
+```bash
+mv ~/Downloads/Shotpad-1.1.0-x86_64.AppImage ~/.local/bin/shotpad.AppImage
+```
+
+Install once from there and every later update is just that one `mv`.
+
+### From a clone
+
+```bash
+git pull
+pip install -e .    # only if the dependencies changed
+```
+
+An editable install already runs your working tree, so a `git pull` is usually
+the whole update.
+
+---
+
 ## One-press capture
 
 No Linux desktop lets an ordinary application steal the Print Screen key, so
