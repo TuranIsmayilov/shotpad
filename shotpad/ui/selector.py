@@ -9,6 +9,8 @@ KDE, XFCE and MATE, on both X11 and Wayland.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from PySide6.QtCore import (
     QEventLoop,
     QObject,
@@ -93,6 +95,36 @@ class ScreenMap:
         bottom_right = self.to_image(rect.bottomRight())
         result = QRectF(top_left, bottom_right).normalized().toRect()
         return result.intersected(QRect(0, 0, self.image.width(), self.image.height()))
+
+    def device_to_logical(self, rect: QRect) -> QRect:
+        """Native-pixel desktop coordinates -> the overlay's logical ones.
+
+        X11 reports window geometry in native pixels (xwininfo does not know
+        about Qt's scaling), while the overlay, its mouse events and the
+        selection all live in logical coordinates. Left unconverted, a window
+        highlight under a devicePixelRatio above 1 is both offset and too
+        large, so clicking it captures part of the window and a strip of
+        desktop.
+        """
+        screen = self._screen_at_device(rect.center()) or self.screens[0]
+        dpr = screen.devicePixelRatio()
+        if dpr == 1.0:
+            return QRect(rect)
+        return QRectF(
+            rect.x() / dpr, rect.y() / dpr, rect.width() / dpr, rect.height() / dpr
+        ).toRect()
+
+    def _screen_at_device(self, point: QPoint):
+        """The screen whose geometry, scaled to native pixels, holds `point`."""
+        for screen in self.screens:
+            geo = screen.geometry()
+            dpr = screen.devicePixelRatio()
+            native = QRectF(
+                geo.x() * dpr, geo.y() * dpr, geo.width() * dpr, geo.height() * dpr
+            )
+            if native.contains(QPointF(point)):
+                return screen
+        return None
 
     def screen_slice(self, screen) -> QRect:
         """Portion of the captured image belonging to `screen`."""
@@ -407,6 +439,11 @@ def select_region(image: QImage, mode: str = "region") -> QRect | None:
     mapper = ScreenMap(image, screens)
     state = _SelectionState(mode)
     windows = list_windows() if window_listing_supported() else []
+    # list_windows() measures in native pixels; everything below is logical.
+    windows = [
+        replace(window, rect=mapper.device_to_logical(window.rect))
+        for window in windows
+    ]
 
     overlays = [_Overlay(screen, mapper, state, windows) for screen in screens]
     loop = QEventLoop()
