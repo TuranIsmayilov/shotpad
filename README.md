@@ -127,6 +127,27 @@ command. Both give you the same app, a menu entry and an icon.
 
 ### With pipx
 
+First [pipx](https://pipx.pypa.io) itself, if you have not got it:
+
+| Distribution | |
+|---|---|
+| Debian 12+, Ubuntu 23.04+, Mint, Zorin | `sudo apt install pipx` |
+| Fedora | `sudo dnf install pipx` |
+| Arch, Manjaro | `sudo pacman -S python-pipx` |
+| openSUSE | `sudo zypper install python3-pipx` |
+| older releases, or no root | `python3 -m pip install --user pipx` |
+
+Then, once:
+
+```bash
+pipx ensurepath
+```
+
+That puts `~/.local/bin` on your `PATH`, which is where both pipx and `shotpad`
+end up — skip it and the install will look like it worked but leave
+`shotpad: command not found`. Open a new terminal afterwards so the change
+takes effect. Now Shotpad:
+
 ```bash
 pipx install git+https://github.com/TuranIsmayilov/shotpad.git
 shotpad --install
@@ -135,9 +156,10 @@ shotpad --install
 `shotpad --install` adds the menu entry, icon and image-file associations;
 `shotpad --uninstall` removes exactly those again.
 
-Needs Python 3.10+ and [pipx](https://pipx.pypa.io). Qt (~100 MB) is downloaded
-on install. Use pipx rather than `pip` — Debian 12+, Ubuntu 23.04+ and Fedora
-all refuse `pip install` into the system Python.
+Needs Python 3.10+. Qt (~100 MB) is downloaded on install. Use pipx rather than
+`pip` — Debian 12+, Ubuntu 23.04+ and Fedora all refuse `pip install` into the
+system Python, which is exactly the problem pipx exists to solve: it gives every
+application its own virtualenv and links just the command into `~/.local/bin`.
 
 ### AppImage
 
