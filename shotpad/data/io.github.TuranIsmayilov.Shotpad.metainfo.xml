@@ -71,6 +71,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.1" date="2026-08-04">
+      <description>
+        <p>
+          Fixes screen capture on X11 when the desktop font size has been
+          raised: the screenshot was painted shrunk into a corner, and window
+          highlights were offset and too large.
+        </p>
+      </description>
+    </release>
     <release version="1.0.0" date="2026-07-26">
       <description>
         <p>First release.</p>
