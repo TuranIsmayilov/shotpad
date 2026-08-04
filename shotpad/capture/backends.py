@@ -19,6 +19,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 
+from PySide6.QtCore import QRect
 from PySide6.QtGui import QGuiApplication, QImage
 
 from .portal import (
@@ -124,32 +125,47 @@ def _qt_grab() -> QImage:
     if not screens:
         raise CaptureError("No screens reported by Qt.")
 
-    # Union of all screen geometries, in device pixels.
-    left = min(s.geometry().left() * s.devicePixelRatio() for s in screens)
-    top = min(s.geometry().top() * s.devicePixelRatio() for s in screens)
-    right = max(s.geometry().right() * s.devicePixelRatio() for s in screens)
-    bottom = max(s.geometry().bottom() * s.devicePixelRatio() for s in screens)
+    # Union of all screen geometries, in device pixels. Each screen's own rect
+    # is rounded whole, rather than the union's edges being scaled: under a
+    # fractional devicePixelRatio the latter loses a pixel off the width and
+    # height, and X11 gets a fractional ratio from Xft.dpi as soon as anyone
+    # touches text scaling - no display scaling required.
+    placed = []
+    for screen in screens:
+        geo = screen.geometry()
+        dpr = screen.devicePixelRatio()
+        placed.append((
+            screen,
+            QRect(
+                round(geo.x() * dpr), round(geo.y() * dpr),
+                round(geo.width() * dpr), round(geo.height() * dpr),
+            ),
+        ))
 
-    width = int(right - left) + 1
-    height = int(bottom - top) + 1
+    union = QRect()
+    for _, rect in placed:
+        union = QRect(rect) if union.isNull() else union.united(rect)
 
-    canvas = QImage(width, height, QImage.Format.Format_ARGB32_Premultiplied)
+    canvas = QImage(
+        union.width(), union.height(), QImage.Format.Format_ARGB32_Premultiplied
+    )
     canvas.fill(0)
 
     from PySide6.QtGui import QPainter
 
     painter = QPainter(canvas)
     got_pixels = False
-    for screen in screens:
+    for screen, rect in placed:
         pixmap = screen.grabWindow(0)
         if pixmap.isNull():
             continue
         got_pixels = True
-        geo = screen.geometry()
-        dpr = screen.devicePixelRatio()
-        painter.drawPixmap(
-            int(geo.left() * dpr - left), int(geo.top() * dpr - top), pixmap
-        )
+        # grabWindow() returns device pixels but tags the pixmap with the
+        # screen's ratio, and drawPixmap(x, y, pixmap) honours that tag by
+        # drawing at logical size - which would shrink the grab into the
+        # corner of a canvas measured in device pixels. Draw it 1:1.
+        pixmap.setDevicePixelRatio(1.0)
+        painter.drawPixmap(rect.x() - union.x(), rect.y() - union.y(), pixmap)
     painter.end()
     if not got_pixels:
         raise CaptureError("Qt returned an empty screen grab.")
@@ -318,17 +334,18 @@ def _full_grab_sizes() -> list[tuple[int, int]]:
     if not screens:
         return []
 
-    left = min(s.geometry().left() * s.devicePixelRatio() for s in screens)
-    top = min(s.geometry().top() * s.devicePixelRatio() for s in screens)
-    right = max(s.geometry().right() * s.devicePixelRatio() for s in screens)
-    bottom = max(s.geometry().bottom() * s.devicePixelRatio() for s in screens)
-
-    sizes = [(int(right - left) + 1, int(bottom - top) + 1)]
+    union = QRect()
+    sizes = []
     for screen in screens:
         geo = screen.geometry()
         dpr = screen.devicePixelRatio()
-        sizes.append((int(geo.width() * dpr), int(geo.height() * dpr)))
-    return sizes
+        rect = QRect(
+            round(geo.x() * dpr), round(geo.y() * dpr),
+            round(geo.width() * dpr), round(geo.height() * dpr),
+        )
+        union = QRect(rect) if union.isNull() else union.united(rect)
+        sizes.append((rect.width(), rect.height()))
+    return [(union.width(), union.height())] + sizes
 
 
 def grab_was_preselected(image: QImage, backend: str) -> bool:
