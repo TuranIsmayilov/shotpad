@@ -63,7 +63,7 @@ from .home import HomeView
 from .selector import select_region
 from .sidebar import Sidebar
 from .titlebar import ChromeDialog, EdgeResizer, TitleDragBar, WindowControls
-from .widgets import IconButton, SectionTitle, separator
+from .widgets import ActionButton, IconButton, SectionTitle, separator
 
 TOOLS = [
     ("select", "cursor", "Select and move", "V"),
@@ -256,20 +256,11 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(separator(vertical=True))
 
-        self.copy_button = QPushButton("  Copy")
-        self.copy_button.setIcon(make_icon("copy", current_theme().text, 17))
-        self.copy_button.setIconSize(QSize(17, 17))
-        self.copy_button.setMinimumHeight(34)
-        self.copy_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.copy_button = ActionButton("Copy", "copy", "Copied")
         self.copy_button.clicked.connect(self.copy_to_clipboard)
         layout.addWidget(self.copy_button)
 
-        self.save_button = QPushButton("  Save")
-        self.save_button.setObjectName("Primary")
-        self.save_button.setIcon(make_icon("download", "#ffffff", 17))
-        self.save_button.setIconSize(QSize(17, 17))
-        self.save_button.setMinimumHeight(34)
-        self.save_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.save_button = ActionButton("Save", "download", "Saved", primary=True)
         self.save_button.clicked.connect(self.save)
         layout.addWidget(self.save_button)
 
@@ -655,7 +646,7 @@ class MainWindow(QMainWindow):
         for button in (
             self.open_button, self.paste_button, self.undo_button,
             self.redo_button, self.menu_button, self.capture_menu_button,
-            self.save_menu_button,
+            self.save_menu_button, self.copy_button, self.save_button,
         ):
             button.refresh_icon()
         self.menu_button.setMenu(self._build_main_menu())
@@ -874,6 +865,7 @@ class MainWindow(QMainWindow):
 
         self.dirty = False
         self.current_path = path
+        self.save_button.flash()
         self.statusBar().showMessage(f"Saved to {path}", 6000)
         if settings.get("close_after_save"):
             self.close()
@@ -887,6 +879,7 @@ class MainWindow(QMainWindow):
         set_clipboard_image(self._render_for_export())
 
         if not silent:
+            self.copy_button.flash()
             self.statusBar().showMessage("Copied to the clipboard", 4000)
 
     # ------------------------------------------------------------------ edit

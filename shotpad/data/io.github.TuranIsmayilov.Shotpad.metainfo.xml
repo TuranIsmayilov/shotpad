@@ -71,6 +71,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.2" date="2026-08-05">
+      <description>
+        <p>
+          The Copy and Save buttons now confirm what they did: the button
+          turns green and reads Copied or Saved for a moment, instead of
+          leaving you to guess whether the click registered.
+        </p>
+      </description>
+    </release>
     <release version="1.0.1" date="2026-08-04">
       <description>
         <p>

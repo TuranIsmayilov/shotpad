@@ -28,6 +28,8 @@ class Palette:
     text_dim: str
     accent: str
     accent_text: str
+    success: str      # "that worked" confirmation fill
+    success_text: str
     danger: str
 
 
@@ -43,6 +45,8 @@ LIGHT = Palette(
     text_dim="#6b6b76",
     accent="#5b5bd6",
     accent_text="#ffffff",
+    success="#2f9e63",
+    success_text="#ffffff",
     danger="#d33c3c",
 )
 
@@ -58,6 +62,8 @@ DARK = Palette(
     text_dim="#9a9aa6",
     accent="#7c7cf0",
     accent_text="#ffffff",
+    success="#35a76b",
+    success_text="#ffffff",
     danger="#e5484d",
 )
 
@@ -162,6 +168,18 @@ QPushButton#Primary {{
     font-weight: 600;
 }}
 QPushButton#Primary:hover {{ background: {QColor(p.accent).lighter(115).name()}; }}
+/* Momentary "done" state, set as a dynamic property by ActionButton.flash().
+   Listed after #Primary so it wins the tie on the Save button too. */
+QPushButton[flash="true"], QPushButton#Primary[flash="true"] {{
+    background: {p.success};
+    border-color: {p.success};
+    color: {p.success_text};
+    font-weight: 600;
+}}
+QPushButton[flash="true"]:hover, QPushButton#Primary[flash="true"]:hover {{
+    background: {QColor(p.success).lighter(112).name()};
+    border-color: {QColor(p.success).lighter(112).name()};
+}}
 QPushButton#Flat {{ background: transparent; border: none; padding: 6px; }}
 QPushButton#Flat:hover {{ background: {p.surface_hi}; }}
 QPushButton#Flat:checked {{ background: {p.accent}; }}

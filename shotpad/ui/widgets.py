@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, Signal
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QColorDialog,
     QFrame,
@@ -31,6 +31,18 @@ def separator(vertical: bool = False) -> QFrame:
         frame.setFrameShape(QFrame.Shape.HLine)
         frame.setFixedHeight(1)
     return frame
+
+
+def repolish(widget: QWidget) -> None:
+    """Re-evaluate the stylesheet after a dynamic property changed.
+
+    Qt only matches property selectors when the widget is polished, so a
+    property set after construction has no effect until we ask for this.
+    """
+    style = widget.style()
+    style.unpolish(widget)
+    style.polish(widget)
+    widget.update()
 
 
 def themed_icon(name: str, size: int = 20, accent: bool = False) -> QIcon:
@@ -67,6 +79,85 @@ class IconButton(QPushButton):
 
     def nextCheckState(self) -> None:  # noqa: N802 - Qt naming
         super().nextCheckState()
+        self.refresh_icon()
+
+
+class ActionButton(QPushButton):
+    """A labelled toolbar button that can confirm what it just did.
+
+    Copy and Save finish without any visible change to the image, and the
+    status bar line is easy to miss, so the button briefly turns green and
+    reads "Copied" / "Saved" instead.
+    """
+
+    FLASH_MS = 1400
+
+    def __init__(
+        self,
+        label: str,
+        icon_name: str,
+        done_label: str,
+        primary: bool = False,
+        size: int = 17,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.icon_name = icon_name
+        self._label = f"  {label}"
+        self._done_label = f"  {done_label}"
+        self._primary = primary
+        self._icon_size = size
+        if primary:
+            self.setObjectName("Primary")
+        self.setIconSize(QSize(size, size))
+        self.setMinimumHeight(34)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.timeout.connect(self._end_flash)
+
+        self.setText(self._label)
+        self.refresh_icon()
+        # Reserve the width of the longer, bold confirmation label up front so
+        # the toolbar does not shuffle sideways when it appears.
+        self.setMinimumWidth(self._hint_width(self._done_label, bold=True))
+
+    def _hint_width(self, text: str, bold: bool = False) -> int:
+        font = self.font()
+        font.setBold(bold or self._primary)
+        metrics = QFontMetrics(font)
+        return metrics.horizontalAdvance(text) + self._icon_size + 34
+
+    def refresh_icon(self) -> None:
+        theme = current_theme()
+        if self.property("flash"):
+            name, color = "check", theme.success_text
+        else:
+            name = self.icon_name
+            color = theme.accent_text if self._primary else theme.text
+        self.setIcon(make_icon(name, color, self._icon_size))
+
+    def flash(self) -> None:
+        """Show the confirmation state, restarting the timer if already shown."""
+        self.setText(self._done_label)
+        self.setProperty("flash", True)
+        repolish(self)
+        self._flash_timer.start(self.FLASH_MS)
+        self.refresh_icon()
+
+    def setEnabled(self, enabled: bool) -> None:  # noqa: N802 - Qt naming
+        # The flash fill outranks the disabled rule, so drop it rather than
+        # leave a greyed-out button looking bright green.
+        if not enabled and self.property("flash"):
+            self._end_flash()
+        super().setEnabled(enabled)
+
+    def _end_flash(self) -> None:
+        self._flash_timer.stop()
+        self.setText(self._label)
+        self.setProperty("flash", False)
+        repolish(self)
         self.refresh_icon()
 
 
