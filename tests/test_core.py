@@ -11,7 +11,7 @@ import sys
 import textwrap
 
 import pytest
-from PySide6.QtCore import QEvent, QPointF, QRect, Qt
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter
 from PySide6.QtWidgets import QApplication
 
@@ -850,3 +850,64 @@ def test_window_controls_glyphs_are_always_drawn(app):
             if image.pixelColor(x, y).lightnessF() > 0.4
         )
         assert lit > 5, f"button {index} appears to have no glyph"
+
+
+def test_area_erase_takes_what_it_covers_and_leaves_the_rest(app):
+    """The eraser's box deletes by geometry, not by bounding box.
+
+    Worth pinning: a long diagonal arrow has a huge, mostly empty bounding
+    box, so sweeping a corner of it would take the whole arrow with it if
+    intersects() ever falls back to bounds.
+    """
+    from shotpad.ui.canvas import Canvas
+
+    canvas = Canvas()
+    doc = Document()
+    doc.source = make_image()
+    canvas.set_document(doc)
+
+    box = QRectF(60, 60, 280, 180)
+    inside = RectAnn(start=QPointF(80, 80), end=QPointF(200, 160), width=5)
+    crossing = LineAnn(start=QPointF(20, 300), end=QPointF(330, 90), width=5)
+    # Its box overlaps `box`; its shaft passes well clear of the nearest corner.
+    grazing = ArrowAnn(start=QPointF(100, 430), end=QPointF(600, 100), width=5)
+    away = EllipseAnn(start=QPointF(420, 300), end=QPointF(560, 420), width=5)
+    for ann in (inside, crossing, grazing, away):
+        doc.add_annotation(ann)
+
+    canvas._drag_origin = box.topLeft()
+    canvas._erase(box)
+
+    assert doc.annotations == [grazing, away]
+
+    doc.undo()
+    assert len(doc.annotations) == 4
+
+
+def test_erasing_nothing_does_not_push_an_undo_step(app):
+    """A click on empty canvas must not cost the user their undo history."""
+    from shotpad.ui.canvas import Canvas
+
+    canvas = Canvas()
+    doc = Document()
+    doc.source = make_image()
+    canvas.set_document(doc)
+    doc.add_annotation(RectAnn(start=QPointF(10, 10), end=QPointF(40, 40), width=4))
+
+    canvas._drag_origin = QPointF(380, 280)
+    canvas._erase(QRectF(380, 280, 1, 1))
+
+    assert len(doc.annotations) == 1
+    assert not doc.undo()
+
+
+def test_pen_stroke_intersects_only_where_the_ink_is(app):
+    """A stroke drawn along the top edge is not caught by a box underneath it."""
+    stroke = PenStroke(
+        width=4, points=[QPointF(x, 20 + (x % 12)) for x in range(20, 300, 10)]
+    )
+
+    assert stroke.intersects(QRectF(100, 10, 40, 40))
+    assert not stroke.intersects(QRectF(100, 120, 40, 40))
+    # The box need not contain the whole stroke, only meet it.
+    assert stroke.intersects(QRectF(0, 0, 60, 60))

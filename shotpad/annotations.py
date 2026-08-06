@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtCore import QLineF, QPointF, QRectF, Qt
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -32,6 +32,24 @@ def _pen(color: QColor, width: float, cap=Qt.PenCapStyle.RoundCap) -> QPen:
     pen.setCapStyle(cap)
     pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
     return pen
+
+
+def _segment_crosses(a: QPointF, b: QPointF, rect: QRectF) -> bool:
+    """Whether the line a-b touches rect - endpoints inside included."""
+    if rect.contains(a) or rect.contains(b):
+        return True
+    if not QRectF(a, b).normalized().intersects(rect):
+        return False
+    segment = QLineF(a, b)
+    corners = (
+        rect.topLeft(), rect.topRight(), rect.bottomRight(), rect.bottomLeft()
+    )
+    for index in range(4):
+        edge = QLineF(corners[index], corners[(index + 1) % 4])
+        kind, _ = segment.intersects(edge)
+        if kind == QLineF.IntersectionType.BoundedIntersection:
+            return True
+    return False
 
 
 @dataclass
@@ -72,6 +90,15 @@ class Annotation:
         return self.bounds().adjusted(
             -tolerance, -tolerance, tolerance, tolerance
         ).contains(point)
+
+    def intersects(self, rect: QRectF) -> bool:
+        """Whether an area sweep - the eraser's - should catch this shape.
+
+        Bounds are the honest answer for anything that fills its own box. The
+        thin diagonal shapes override this, because their box is mostly empty
+        and sweeping a corner of it should not take the whole line with it.
+        """
+        return self.bounds().intersects(rect)
 
     # -- painting -----------------------------------------------------------
     def draw(self, painter: QPainter) -> None:
@@ -136,6 +163,16 @@ class PenStroke(Annotation):
             return (self.points[0] - point).manhattanLength() <= tol * 2
         return any(
             dist_point_to_segment(point, a, b) <= tol
+            for a, b in zip(self.points, self.points[1:])
+        )
+
+    def intersects(self, rect: QRectF) -> bool:
+        pad = self.width / 2
+        area = rect.adjusted(-pad, -pad, pad, pad)
+        if len(self.points) == 1:
+            return area.contains(self.points[0])
+        return any(
+            _segment_crosses(a, b, area)
             for a, b in zip(self.points, self.points[1:])
         )
 
@@ -219,6 +256,12 @@ class LineAnn(TwoPointAnnotation):
             tolerance + self.width / 2
         )
 
+    def intersects(self, rect: QRectF) -> bool:
+        pad = self.width / 2
+        return _segment_crosses(
+            self.start, self.end, rect.adjusted(-pad, -pad, pad, pad)
+        )
+
     def draw(self, painter: QPainter) -> None:
         pen = _pen(self.color, self.width)
         if self.dashed:
@@ -245,6 +288,14 @@ class ArrowAnn(TwoPointAnnotation):
     def hit(self, point: QPointF, tolerance: float) -> bool:
         return dist_point_to_segment(point, self.start, self.end) <= (
             tolerance + self.width
+        )
+
+    def intersects(self, rect: QRectF) -> bool:
+        # The head is wider than the shaft, so pad by the full width rather
+        # than half of it - sweeping over an arrow tip should catch it.
+        pad = max(self.width * self.head_scale, 6.0) / 2
+        return _segment_crosses(
+            self.start, self.end, rect.adjusted(-pad, -pad, pad, pad)
         )
 
     def _head(self, tip: QPointF, tail: QPointF) -> QPolygonF:

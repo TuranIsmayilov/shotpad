@@ -71,6 +71,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.4" date="2026-08-06">
+      <description>
+        <p>
+          The eraser can now clear an area: drag a box over several marks to
+          remove them all at once. Clicking a single mark still works as
+          before.
+        </p>
+      </description>
+    </release>
     <release version="1.0.3" date="2026-08-06">
       <description>
         <p>

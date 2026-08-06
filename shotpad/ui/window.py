@@ -76,7 +76,7 @@ TOOLS = [
     ("text", "text", "Text", "T"),
     ("number", "number", "Numbered badge", "N"),
     ("redact", "blur", "Blur / pixelate / block out", "B"),
-    ("eraser", "eraser", "Erase annotation", "X"),
+    ("eraser", "eraser", "Erase a mark, or drag over several", "X"),
     ("crop", "crop", "Crop", "C"),
 ]
 

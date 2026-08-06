@@ -182,6 +182,14 @@ class Sidebar(QScrollArea):
         self.select_hint.setWordWrap(True)
         card.add(self.select_hint)
 
+        self.eraser_hint = QLabel(
+            "Click a mark to remove it, or drag a box to clear everything "
+            "it covers."
+        )
+        self.eraser_hint.setObjectName("FieldLabel")
+        self.eraser_hint.setWordWrap(True)
+        card.add(self.eraser_hint)
+
         self.root.addWidget(card)
 
     def update_for_tool(self, tool: str) -> None:
@@ -212,6 +220,7 @@ class Sidebar(QScrollArea):
             self._show_controls_for_tool(tool)
 
         self.select_hint.setVisible(tool == "select" and ann is None)
+        self.eraser_hint.setVisible(tool == "eraser")
 
     def _set_colour_controls_visible(self, visible: bool) -> None:
         self.color_button.setVisible(visible)
