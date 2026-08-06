@@ -34,8 +34,10 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
+    QPolygonF,
     QWheelEvent,
 )
 from PySide6.QtWidgets import QPlainTextEdit, QWidget
@@ -60,10 +62,34 @@ from ..render import (
     render_base,
 )
 from ..theme import current as current_theme
-from ..util import checkerboard_brush
+from ..util import blur_image, checkerboard_brush, pixelate_image
 
 HANDLE_R = 5.0
 HIT_TOLERANCE = 7.0
+
+#: Blur radius past which the drag preview shrinks the patch first. Qt's blur
+#: cost grows with the radius, and zoomed in a radius of 70+ takes long enough
+#: to stutter - while a blur is exactly the thing a downscale round trip does
+#: not visibly change.
+PREVIEW_BLUR_CAP = 20.0
+
+
+def _preview_blur(patch: QImage, radius: float) -> QImage:
+    """Blur for the on-canvas preview: accurate enough, always fast.
+
+    May return a smaller image than it was given - the caller scales it back
+    up while drawing, which costs nothing next to blurring at full size.
+    """
+    if radius <= PREVIEW_BLUR_CAP:
+        return blur_image(patch, radius)
+    shrink = PREVIEW_BLUR_CAP / radius
+    small = patch.scaled(
+        max(1, int(patch.width() * shrink)),
+        max(1, int(patch.height() * shrink)),
+        Qt.AspectRatioMode.IgnoreAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    return blur_image(small, PREVIEW_BLUR_CAP)
 
 
 @dataclass
@@ -259,6 +285,8 @@ class Canvas(QWidget):
         base = self._ensure_base()
         if base is not None:
             painter.drawImage(rect.topLeft(), base)
+            if self._drawing is not None and self._drawing.pixel_effect:
+                self._paint_pixel_preview(painter, self._drawing, base)
 
         painter.save()
         painter.translate(rect.topLeft())
@@ -275,6 +303,63 @@ class Canvas(QWidget):
             self._paint_crop(painter)
         elif self._selected is not None:
             self._paint_selection(painter, self._selected)
+
+    def _paint_pixel_preview(
+        self, painter: QPainter, ann: RedactAnn, base: QImage
+    ) -> None:
+        """Show a blur / pixelate / block region while it is still being dragged.
+
+        Pixel effects are baked into the base image, and that only happens once
+        the annotation is committed - so without this the region you are
+        dragging out stays invisible until you let go of the button. The
+        preview reworks the cached base at display scale rather than the
+        screenshot at full size, which is what keeps it cheap enough to do on
+        every mouse move.
+        """
+        transform = annotation_transform(self.doc, self._display_scale)
+        quad = transform.map(QPolygonF(ann.bounds()))
+        path = QPainterPath()
+        path.addPolygon(quad)
+
+        # The strength is expressed in screenshot pixels; the base is already
+        # scaled to fit the window, so the preview has to be too.
+        strength = max(1.0, ann.strength * self._display_scale)
+
+        # Only rework what is on screen. Zoomed in, the base is far larger than
+        # the viewport, and blurring all of it would cost seconds per frame.
+        # The margin keeps the blur at the viewport edge sampling real pixels.
+        margin = int(math.ceil(strength * 2)) + 2
+        visible = self.rect().translated(-self._display_rect.topLeft().toPoint())
+        region = quad.boundingRect().toAlignedRect().intersected(
+            visible.adjusted(-margin, -margin, margin, margin)
+        ).intersected(QRect(0, 0, base.width(), base.height()))
+
+        painter.save()
+        painter.translate(self._display_rect.topLeft())
+        # Clip to the viewport before the region itself: zoomed in the mapped
+        # quad can be tens of thousands of pixels across, and rasterising a
+        # clip that big is slower than everything else here put together.
+        painter.setClipRect(visible)
+        painter.setClipPath(path, Qt.ClipOperation.IntersectClip)
+        if ann.mode == "solid":
+            painter.fillRect(region, QBrush(ann.color))
+        elif region.width() >= 2 and region.height() >= 2:
+            patch = base.copy(region)
+            if ann.mode == "pixelate":
+                patch = pixelate_image(patch, max(2, int(round(strength))))
+            else:
+                patch = _preview_blur(patch, strength)
+            painter.drawImage(QRectF(region), patch)
+        painter.setClipping(False)
+
+        # A hairline outline, since a light blur over a plain background can
+        # otherwise be hard to make out while dragging.
+        pen = QPen(QColor(current_theme().accent), 1.2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPolygon(quad)
+        painter.restore()
 
     def _paint_placeholder(self, painter: QPainter) -> None:
         theme = current_theme()
