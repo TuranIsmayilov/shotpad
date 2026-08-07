@@ -681,7 +681,7 @@ def test_shortcut_reference_covers_every_tool(app):
 
     groups = dict(shortcut_groups())
     listed = {keys for keys, _ in groups["Tools"]}
-    assert listed == {shortcut for _k, _i, _t, shortcut in TOOLS}
+    assert listed == {shortcut for _k, _i, _l, _t, shortcut in TOOLS}
     for name in ("Capture", "File", "Edit", "Tools", "View"):
         assert groups[name], f"{name} section is empty"
 
@@ -911,3 +911,50 @@ def test_pen_stroke_intersects_only_where_the_ink_is(app):
     assert not stroke.intersects(QRectF(100, 120, 40, 40))
     # The box need not contain the whole stroke, only meet it.
     assert stroke.intersects(QRectF(0, 0, 60, 60))
+
+
+def test_tool_rail_names_widen_it_and_the_choice_sticks(app):
+    """The rail toggle is the only way to reach the labels, so pin the round trip.
+
+    The expanded width is deliberately not a constant: it comes from the
+    layout, so a longer tool name or a larger font cannot clip the labels.
+    """
+    from shotpad.settings import DEFAULTS, settings
+    from shotpad.theme import apply_theme
+    from shotpad.ui.window import MainWindow
+
+    # The rail ships open: the names are the discoverable state, and the
+    # collapse is for people who already know the icons.
+    assert DEFAULTS["tool_rail_labels"] is True
+
+    apply_theme(app, "dark")
+    previous = settings.get("tool_rail_labels")
+    try:
+        settings.set("tool_rail_labels", False)
+        window = MainWindow()
+        window.show()
+        assert window.tool_rail.width() == 52
+        assert window.tool_buttons["select"].text() == ""
+
+        window.toggle_tool_names()
+        assert window.tool_rail.sizeHint().width() > 52
+        assert window.tool_buttons["select"].text().strip() == "Select"
+        assert settings.get("tool_rail_labels") is True
+
+        # Every tool must be named, or the rail reads as a list with holes.
+        for key, button in window.tool_buttons.items():
+            assert button.text().strip(), f"{key} has no label"
+
+        window.toggle_tool_names()
+        assert window.tool_rail.width() == 52
+        assert settings.get("tool_rail_labels") is False
+
+        # A fresh window follows the saved choice.
+        settings.set("tool_rail_labels", True)
+        again = MainWindow()
+        assert again._rail_expanded
+        assert again.tool_buttons["crop"].text().strip() == "Crop"
+        again.close()
+        window.close()
+    finally:
+        settings.set("tool_rail_labels", previous)

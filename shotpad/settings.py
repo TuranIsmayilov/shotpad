@@ -24,6 +24,8 @@ DEFAULTS: dict[str, object] = {
     "include_pointer": False,
     "filename_pattern": "Shotpad %Y-%m-%d %H-%M-%S",
     "last_tool": "select",
+    "tool_rail_labels": True,           # name each tool in the rail; the ☰
+                                        # button collapses it to icons only
     "tool_color": "#e5484d",
     "tool_width": 14.0,
     "arrow_taper": 0.35,

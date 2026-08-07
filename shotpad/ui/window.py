@@ -63,21 +63,27 @@ from .home import HomeView
 from .selector import select_region
 from .sidebar import Sidebar
 from .titlebar import ChromeDialog, EdgeResizer, TitleDragBar, WindowControls
-from .widgets import ActionButton, IconButton, SectionTitle, separator
+from .widgets import ActionButton, IconButton, SectionTitle, repolish, separator
 
+#: Qt's QWIDGETSIZE_MAX - "no maximum" for setFixedWidth to be undone with.
+#: PySide6 does not re-export the constant, so it is spelled out here.
+UNBOUNDED = 16777215
+
+#: key, icon, rail label, tooltip, shortcut. The label is what the tool rail
+#: shows when it is widened; the tooltip stays the longer explanation.
 TOOLS = [
-    ("select", "cursor", "Select and move", "V"),
-    ("pen", "pen", "Freehand pen", "P"),
-    ("highlighter", "highlighter", "Highlighter", "H"),
-    ("arrow", "arrow", "Arrow", "A"),
-    ("line", "line", "Line", "L"),
-    ("rect", "square", "Rectangle", "R"),
-    ("ellipse", "circle", "Ellipse", "E"),
-    ("text", "text", "Text", "T"),
-    ("number", "number", "Numbered badge", "N"),
-    ("redact", "blur", "Blur / pixelate / block out", "B"),
-    ("eraser", "eraser", "Erase a mark, or drag over several", "X"),
-    ("crop", "crop", "Crop", "C"),
+    ("select", "cursor", "Select", "Select and move", "V"),
+    ("pen", "pen", "Pen", "Freehand pen", "P"),
+    ("highlighter", "highlighter", "Highlighter", "Highlighter", "H"),
+    ("arrow", "arrow", "Arrow", "Arrow", "A"),
+    ("line", "line", "Line", "Line", "L"),
+    ("rect", "square", "Rectangle", "Rectangle", "R"),
+    ("ellipse", "circle", "Ellipse", "Ellipse", "E"),
+    ("text", "text", "Text", "Text", "T"),
+    ("number", "number", "Number", "Numbered badge", "N"),
+    ("redact", "blur", "Redact", "Blur / pixelate / block out", "B"),
+    ("eraser", "eraser", "Eraser", "Erase a mark, or drag over several", "X"),
+    ("crop", "crop", "Crop", "Crop", "C"),
 ]
 
 
@@ -372,17 +378,26 @@ class MainWindow(QMainWindow):
     def _build_tool_rail(self) -> QWidget:
         rail = QWidget()
         rail.setObjectName("ToolRail")
-        rail.setFixedWidth(52)
+        # Assigned here as well as by the caller: _show_tool_names sizes the
+        # rail through it before this returns.
+        self.tool_rail = rail
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(7, 10, 7, 10)
         layout.setSpacing(4)
 
+        self.rail_toggle = IconButton("menu", "", size=18)
+        self.rail_toggle.setFixedHeight(32)
+        self.rail_toggle.clicked.connect(self.toggle_tool_names)
+        layout.addWidget(self.rail_toggle)
+        layout.addSpacing(3)
+
+        self._tool_labels = {key: label for key, _i, label, _t, _s in TOOLS}
         self.tool_buttons: dict[str, IconButton] = {}
-        for key, icon_name, tooltip, shortcut in TOOLS:
+        for key, icon_name, _label, tooltip, shortcut in TOOLS:
             button = IconButton(
                 icon_name, f"{tooltip}  ({shortcut})", checkable=True, size=21
             )
-            button.setFixedSize(38, 38)
+            button.setFixedHeight(38)
             button.clicked.connect(lambda _=False, k=key: self.set_tool(k))
             layout.addWidget(button)
             self.tool_buttons[key] = button
@@ -391,7 +406,44 @@ class MainWindow(QMainWindow):
 
         layout.addStretch(1)
         self.tool_buttons["select"].setChecked(True)
+        self._show_tool_names(bool(settings.get("tool_rail_labels")), save=False)
         return rail
+
+    def toggle_tool_names(self) -> None:
+        self._show_tool_names(not self._rail_expanded)
+
+    def _show_tool_names(self, expanded: bool, save: bool = True) -> None:
+        """Widen the rail to put each tool's name beside its icon.
+
+        Collapsed the rail is a fixed 52px of icons; expanded it is left to the
+        layout, so the width follows the longest label and the font in use
+        rather than a number guessed here.
+        """
+        self._rail_expanded = expanded
+        for key, button in self.tool_buttons.items():
+            button.setText(f"  {self._tool_labels[key]}" if expanded else "")
+            button.setProperty("expanded", expanded)
+            repolish(button)
+        self.rail_toggle.setText("  Tools" if expanded else "")
+        self.rail_toggle.setProperty("expanded", expanded)
+        self.rail_toggle.setToolTip(
+            "Hide the tool names" if expanded else "Show the tool names"
+        )
+        repolish(self.rail_toggle)
+
+        if expanded:
+            self.tool_rail.setMinimumWidth(0)
+            self.tool_rail.setMaximumWidth(UNBOUNDED)
+            for button in (*self.tool_buttons.values(), self.rail_toggle):
+                button.setMinimumWidth(0)
+                button.setMaximumWidth(UNBOUNDED)
+        else:
+            self.tool_rail.setFixedWidth(52)
+            for button in (*self.tool_buttons.values(), self.rail_toggle):
+                button.setFixedWidth(38)
+
+        if save:
+            settings.set("tool_rail_labels", expanded)
 
     def _build_status_bar(self) -> None:
         bar = QStatusBar()
@@ -538,7 +590,7 @@ class MainWindow(QMainWindow):
         add("Ctrl+Q", self.close)
         add("Ctrl+,", self.show_preferences)
 
-        for key, _icon, _tooltip, shortcut in TOOLS:
+        for key, _icon, _label, _tooltip, shortcut in TOOLS:
             add(shortcut, lambda k=key: self.set_tool(k))
 
     # ----------------------------------------------------------------- state
@@ -1118,7 +1170,7 @@ class MainWindow(QMainWindow):
 # sync with the keys the window actually binds.
 
 def shortcut_groups() -> list[tuple[str, list[tuple[str, str]]]]:
-    tools = [(shortcut, tooltip) for _key, _icon, tooltip, shortcut in TOOLS]
+    tools = [(shortcut, tooltip) for _key, _icon, _label, tooltip, shortcut in TOOLS]
     return [
         ("Capture", [
             ("Ctrl+Shift+A", "Capture an area"),

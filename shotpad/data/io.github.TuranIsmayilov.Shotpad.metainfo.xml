@@ -71,6 +71,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.5" date="2026-08-07">
+      <description>
+        <p>
+          The tool rail now names every tool beside its icon. The button at
+          the top of the rail collapses it back to icons only, and the choice
+          is remembered.
+        </p>
+      </description>
+    </release>
     <release version="1.0.4" date="2026-08-06">
       <description>
         <p>

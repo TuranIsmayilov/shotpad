@@ -47,9 +47,13 @@ see, and copy or save the result.
 
 Plus rotate, flip, unlimited undo/redo, and export at 1×/1.5×/2×/3×.
 
-Closing the window copies the finished image to the clipboard, so the common
-"grab it, mark it up, paste it into chat" loop needs no explicit save. Turn it
-off in Preferences → General.
+The tool rail names every tool beside its icon. The ☰ button at the top of it
+collapses the rail to icons only, and it opens the way you last left it.
+
+Preferences → General can make closing the window copy the finished image to
+the clipboard, for the common "grab it, mark it up, paste it into chat" loop.
+It is off by default: taking the clipboard is a side effect on something you
+own and did not ask about.
 
 Annotations are stored in **screenshot coordinates**, so changing the padding,
 crop, aspect ratio or tilt never makes an arrow drift off the thing it points
@@ -168,9 +172,9 @@ Download the latest from
 [Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
 
 ```bash
-chmod +x Shotpad-1.0.4-x86_64.AppImage
-./Shotpad-1.0.4-x86_64.AppImage          # run it
-./Shotpad-1.0.4-x86_64.AppImage --install  # menu entry and icon
+chmod +x Shotpad-1.0.5-x86_64.AppImage
+./Shotpad-1.0.5-x86_64.AppImage          # run it
+./Shotpad-1.0.5-x86_64.AppImage --install  # menu entry and icon
 ```
 
 Nothing else needed — it carries its own Python and Qt. It starts about 0.2 s
@@ -221,9 +225,9 @@ Download the new file from
 [Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
 
 ```bash
-chmod +x Shotpad-1.0.4-x86_64.AppImage
-./Shotpad-1.0.4-x86_64.AppImage --install   # re-point the menu entry
-rm Shotpad-1.0.3-x86_64.AppImage            # the old one, once you are happy
+chmod +x Shotpad-1.0.5-x86_64.AppImage
+./Shotpad-1.0.5-x86_64.AppImage --install   # re-point the menu entry
+rm Shotpad-1.0.4-x86_64.AppImage            # the old one, once you are happy
 ```
 
 **Re-running `--install` matters here.** The menu entry and any keyboard
@@ -369,7 +373,7 @@ lets Shotpad capture through it directly, with no prompt involved.
 ## Building the AppImage
 
 ```bash
-./packaging/build-appimage.sh              # -> dist/Shotpad-1.0.4-x86_64.AppImage
+./packaging/build-appimage.sh              # -> dist/Shotpad-1.0.5-x86_64.AppImage
 ./packaging/build-appimage.sh --arch aarch64
 ./packaging/build-appimage.sh --no-prune   # keep all of Qt, for debugging
 ```
@@ -467,7 +471,7 @@ The AppImage bundles both. The full licence text of everything inside it is at
 `usr/share/licenses/` within the bundle — read it without installing anything:
 
 ```bash
-./Shotpad-1.0.4-x86_64.AppImage --appimage-extract 'usr/share/licenses/*'
+./Shotpad-1.0.5-x86_64.AppImage --appimage-extract 'usr/share/licenses/*'
 ```
 
 Qt is bundled unmodified and dynamically linked, so you can replace it with

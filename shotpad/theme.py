@@ -193,6 +193,13 @@ QPushButton#ToolButton:hover {{ background: {p.surface_hi}; }}
 QPushButton#ToolButton:checked {{
     background: {p.accent};
     border-color: {p.accent};
+    color: {p.accent_text};
+}}
+/* Widened tool rail: the label reads as a list, so the icon and text start at
+   the left edge instead of being centred as a pair. */
+QPushButton#ToolButton[expanded="true"] {{
+    text-align: left;
+    padding: 8px 10px 8px 7px;
 }}
 QPushButton::menu-indicator {{ image: none; width: 0px; }}
 
