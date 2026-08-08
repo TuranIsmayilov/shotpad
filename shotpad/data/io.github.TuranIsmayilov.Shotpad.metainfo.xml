@@ -71,6 +71,20 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.6" date="2026-08-08">
+      <description>
+        <p>
+          Screenshots can now wear an outer border: a mat between the picture
+          and the background, in frosted glass, white, smoke or black. The
+          glass preset fades across the diagonal so it catches the light
+          rather than sitting as a flat wash.
+        </p>
+        <p>
+          Fixed the sidebar scroll bar being unusable in a small window, where
+          the window's own resize edge took the pointer instead.
+        </p>
+      </description>
+    </release>
     <release version="1.0.5" date="2026-08-07">
       <description>
         <p>
