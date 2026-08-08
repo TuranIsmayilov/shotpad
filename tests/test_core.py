@@ -11,7 +11,7 @@ import sys
 import textwrap
 
 import pytest
-from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import QColor, QImage, QMouseEvent, QPainter
 from PySide6.QtWidgets import QApplication
 
@@ -960,6 +960,51 @@ def test_window_controls_glyphs_are_always_drawn(app):
             if image.pixelColor(x, y).lightnessF() > 0.4
         )
         assert lit > 5, f"button {index} appears to have no glyph"
+
+
+def test_scrollbars_outrank_the_frameless_resize_edge(app):
+    """The sidebar's scroll bar sits inside the resize band and must win it.
+
+    It is narrower than EdgeResizer.MARGIN and runs flush against the right
+    edge, so before this the band swallowed it: the pointer showed a resize
+    cursor over the whole scroll bar and dragging it resized the window.
+    """
+    from shotpad.ui.titlebar import EdgeResizer
+    from shotpad.ui.window import MainWindow
+
+    win = MainWindow()
+    win.resize(900, 520)
+    win.canvas.set_document(Document(make_image()))
+    win.show()
+    app.processEvents()
+
+    resizer = EdgeResizer(win)
+    try:
+        rect = win.rect()
+        middle = QPoint(rect.right() - 3, rect.center().y())
+        on_edge = win.mapToGlobal(middle)
+        scrollbar = win.sidebar.verticalScrollBar()
+
+        # The premise: this point really is inside the band.
+        assert resizer.edges_at(on_edge, win.canvas) == Qt.Edge.RightEdge
+        # ...but the scroll bar owns it.
+        assert resizer.edges_at(on_edge, scrollbar) is None
+        # Any slider, however deep, is reached through its parents.
+        assert resizer.edges_at(on_edge, win.sidebar.padding_slider.slider) is None
+        # A disabled one is not draggable, so it gives the edge back.
+        scrollbar.setEnabled(False)
+        assert resizer.edges_at(on_edge, scrollbar) == Qt.Edge.RightEdge
+        scrollbar.setEnabled(True)
+
+        # The corners stay the window's: the header and status bar span the
+        # full width, so nothing was actually lost.
+        corner = win.mapToGlobal(QPoint(rect.right() - 3, rect.bottom() - 3))
+        assert resizer.edges_at(corner, win) == (
+            Qt.Edge.RightEdge | Qt.Edge.BottomEdge
+        )
+    finally:
+        resizer.detach()
+        win.close()
 
 
 def test_area_erase_takes_what_it_covers_and_leaves_the_rest(app):

@@ -13,6 +13,7 @@ from __future__ import annotations
 from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
+    QAbstractSlider,
     QApplication,
     QDialog,
     QHBoxLayout,
@@ -324,9 +325,33 @@ class EdgeResizer:
         self._clear_cursor()
 
     # -- hit testing --------------------------------------------------------
-    def edges_at(self, global_pos: QPoint):
+    @staticmethod
+    def _is_draggable_control(widget) -> bool:
+        """Whether a widget under the pointer should outrank the resize band.
+
+        The sidebar's scroll bar runs flush against the right edge, and its
+        handle is 6px against a MARGIN of 8, so the band swallowed it whole:
+        hovering it gave a resize cursor and dragging it resized the window
+        instead of scrolling. Anything you drag by its handle has the same
+        problem, hence QAbstractSlider rather than QScrollBar alone.
+
+        Giving the control priority costs no resize area worth having. The
+        header and the status bar span the full width, so every corner - and
+        the whole top and bottom edge - is still the window's.
+        """
+        while isinstance(widget, QWidget):
+            if isinstance(widget, QAbstractSlider) and widget.isEnabled():
+                return True
+            widget = widget.parentWidget()
+        return False
+
+    def edges_at(self, global_pos: QPoint, source=None):
         window = self._window
         if window.isMaximized() or window.isFullScreen() or not window.isVisible():
+            return None
+
+        under = source if source is not None else QApplication.widgetAt(global_pos)
+        if self._is_draggable_control(under):
             return None
 
         # Work in window-local coordinates. mapFromGlobal goes through the
@@ -571,7 +596,9 @@ class _EdgeFilter(QWidget):
             return False
 
         global_pos = event.globalPosition().toPoint()
-        edges = self._owner.edges_at(global_pos)
+        # `obj` is the widget the event was delivered to, which is a more
+        # reliable answer than widgetAt() - and free, since we already have it.
+        edges = self._owner.edges_at(global_pos, obj)
 
         if kind == QEvent.Type.MouseMove:
             # Do not fight the cursor while a button is held: that is a drag
