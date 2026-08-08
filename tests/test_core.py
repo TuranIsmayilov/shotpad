@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import textwrap
 
 import pytest
@@ -644,6 +645,65 @@ def test_portal_only_deletes_files_it_caused(app, tmp_path):
 # ---------------------------------------------------------------- clipboard
 
 
+def _sandboxed_env(config_dir: str) -> dict:
+    """Environment for a subprocess test, pointed away from the real config.
+
+    QSettings resolves to $XDG_CONFIG_HOME/Shotpad/Shotpad.conf, so a child
+    that writes a preference writes it into the config of whoever is running
+    the suite. test_window_close_with_copy_enabled_exits_cleanly turns
+    copy_on_close *on* and cannot turn it back off - it asserts on the child's
+    exit code, and the child is gone by then. Running the suite therefore armed
+    "copy to clipboard on close" on the developer's own machine, and the next
+    window they closed took their clipboard.
+
+    Giving every child its own config directory is what stops a test from
+    editing the preferences of the person running it.
+    """
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return dict(
+        os.environ,
+        QT_QPA_PLATFORM="offscreen",
+        PYTHONPATH=root,
+        XDG_CONFIG_HOME=config_dir,
+    )
+
+
+def test_a_child_writing_a_preference_cannot_reach_the_real_config():
+    """The sandbox has to actually contain a write, not just look isolated.
+
+    Worth pinning because the failure mode is silent: the suite passes, and
+    the damage only surfaces later as the app behaving differently for the
+    person who ran it.
+    """
+    with tempfile.TemporaryDirectory() as sandbox:
+        env = _sandboxed_env(sandbox)
+        code = textwrap.dedent(
+            """
+            from PySide6.QtCore import QCoreApplication
+            import sys
+            app = QCoreApplication(sys.argv[:1])
+            from shotpad.settings import settings
+            settings.set("copy_on_close", True)
+            settings.sync()
+            print(settings._qs.fileName())
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], env=env, timeout=120,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stderr.decode("utf-8", "replace")
+
+        written = result.stdout.decode("utf-8").strip()
+        assert written.startswith(sandbox), (
+            f"a child wrote its preferences to {written}, outside the sandbox"
+        )
+        # And the value really did land there, so the assertion above is not
+        # passing merely because nothing was written at all.
+        with open(written, encoding="utf-8") as handle:
+            assert "copy_on_close=true" in handle.read()
+
+
 def test_clipboard_copy_then_exit_does_not_crash():
     """A copy must not take the process down on the way out.
 
@@ -667,12 +727,11 @@ def test_clipboard_copy_then_exit_does_not_crash():
         set_clipboard_image(image)
         """
     )
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONPATH=root)
-    result = subprocess.run(
-        [sys.executable, "-c", code], env=env, timeout=120,
-        capture_output=True,
-    )
+    with tempfile.TemporaryDirectory() as sandbox:
+        result = subprocess.run(
+            [sys.executable, "-c", code], env=_sandboxed_env(sandbox),
+            timeout=120, capture_output=True,
+        )
     assert result.returncode == 0, (
         f"copying then exiting crashed with {result.returncode}: "
         f"{result.stderr.decode('utf-8', 'replace')[-400:]}"
@@ -680,7 +739,11 @@ def test_clipboard_copy_then_exit_does_not_crash():
 
 
 def test_window_close_with_copy_enabled_exits_cleanly():
-    """The same crash, reached the way a user reaches it: by closing the window."""
+    """The same crash, reached the way a user reaches it: by closing the window.
+
+    The child turns copy_on_close on and never turns it off, so it must run
+    against a throwaway config - see _sandboxed_env.
+    """
     code = textwrap.dedent(
         """
         import sys
@@ -702,11 +765,11 @@ def test_window_close_with_copy_enabled_exits_cleanly():
         app.exec()
         """
     )
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", PYTHONPATH=root)
-    result = subprocess.run(
-        [sys.executable, "-c", code], env=env, timeout=180, capture_output=True
-    )
+    with tempfile.TemporaryDirectory() as sandbox:
+        result = subprocess.run(
+            [sys.executable, "-c", code], env=_sandboxed_env(sandbox),
+            timeout=180, capture_output=True,
+        )
     assert result.returncode == 0, (
         f"closing the window crashed with {result.returncode}: "
         f"{result.stderr.decode('utf-8', 'replace')[-400:]}"
