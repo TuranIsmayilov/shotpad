@@ -78,6 +78,116 @@ def test_padding_grows_the_canvas(app):
     )
 
 
+def test_outer_border_grows_the_canvas_without_eating_the_padding(app):
+    doc = Document(make_image(400, 300))
+    doc.frame.padding = 40
+    doc.frame.rotation = 0
+    plain = canvas_layout(doc)
+
+    doc.frame.outer_border = 5.0  # 5% of the 300px short edge = 15px
+    framed = canvas_layout(doc)
+
+    assert framed.border == pytest.approx(15.0)
+    assert framed.canvas.width() == plain.canvas.width() + 30
+    assert framed.canvas.height() == plain.canvas.height() + 30
+    # The screenshot is unchanged and still centred; the band is what is new.
+    assert framed.image_rect.size() == plain.image_rect.size()
+    assert framed.image_rect.x() == pytest.approx(
+        framed.canvas.width() - framed.image_rect.right(), abs=1.0
+    )
+    assert framed.plate_rect.width() == pytest.approx(
+        framed.image_rect.width() + 30
+    )
+
+
+def test_outer_border_paints_a_band_around_the_screenshot(app):
+    doc = Document(make_image(400, 300, "#000000"))
+    doc.frame.padding = 20
+    doc.frame.rotation = 0
+    doc.frame.corner_radius = 0
+    doc.frame.shadow_strength = 0
+    doc.frame.outer_border = 5.0
+    doc.frame.outer_border_color = QColor("#ff00ff")
+    doc.background.kind = "solid"
+    doc.background.color1 = QColor("#ffffff")
+
+    layout = canvas_layout(doc)
+    out = render_document(doc, 1.0)
+
+    # Just outside the screenshot is band; just inside it is screenshot.
+    middle = int(layout.image_rect.center().y())
+    band = out.pixelColor(int(layout.image_rect.x()) - 7, middle)
+    shot = out.pixelColor(int(layout.image_rect.x()) + 7, middle)
+    outside = out.pixelColor(2, middle)
+    assert band == QColor("#ff00ff")
+    assert shot == QColor("#000000")
+    assert outside == QColor("#ffffff")
+
+
+def test_glass_border_fades_across_the_diagonal(app):
+    """What separates glass from a flat mat: the sheen is brightest top-left."""
+    doc = Document(make_image(400, 400, "#000000"))
+    doc.frame.padding = 20
+    doc.frame.rotation = 0
+    doc.frame.corner_radius = 0
+    doc.frame.shadow_strength = 0
+    doc.frame.outer_border = 6.0
+    doc.frame.outer_border_color = QColor(255, 255, 255, 128)
+    doc.background.kind = "solid"
+    doc.background.color1 = QColor("#000000")
+
+    layout = canvas_layout(doc)
+    band = layout.border / 2.0
+    near_x = int(layout.plate_rect.x() + band)
+    near_y = int(layout.plate_rect.y() + band)
+    far_x = int(layout.plate_rect.right() - band)
+    far_y = int(layout.plate_rect.bottom() - band)
+
+    doc.frame.outer_border_glass = False
+    flat = render_document(doc, 1.0)
+    assert flat.pixelColor(near_x, near_y).red() == pytest.approx(
+        flat.pixelColor(far_x, far_y).red(), abs=2
+    )
+
+    doc.frame.outer_border_glass = True
+    glass = render_document(doc, 1.0)
+    near = glass.pixelColor(near_x, near_y).red()
+    far = glass.pixelColor(far_x, far_y).red()
+    assert near > far + 20, f"expected a falloff, got {near} -> {far}"
+    # It fades the alpha, not the hue: over black, white at any alpha is grey.
+    corner = glass.pixelColor(near_x, near_y)
+    assert corner.red() == corner.green() == corner.blue()
+
+
+def test_glass_is_the_first_border_preset(app):
+    from shotpad.model import BORDER_PRESETS
+
+    assert BORDER_PRESETS[0].glass is True
+    assert BORDER_PRESETS[0].name == "Glass"
+    assert sum(1 for p in BORDER_PRESETS if p.glass) == 1
+
+
+def test_frame_clone_carries_the_glass_flag(app):
+    doc = Document(make_image())
+    doc.frame.outer_border_glass = True
+    assert doc.frame.clone().outer_border_glass is True
+
+
+def test_outer_border_is_off_by_default(app):
+    doc = Document(make_image())
+    assert doc.frame.outer_border == 0.0
+    assert canvas_layout(doc).border == 0.0
+    assert canvas_layout(doc).plate_rect == canvas_layout(doc).image_rect
+
+
+def test_frame_clone_copies_the_border_colour(app):
+    doc = Document(make_image())
+    doc.frame.outer_border_color = QColor("#80123456")
+    clone = doc.frame.clone()
+    clone.outer_border_color.setAlpha(255)
+    assert doc.frame.outer_border_color.alpha() == 0x80
+
+
 def test_aspect_ratio_is_honoured(app):
     doc = Document(make_image(400, 300))
     doc.frame.aspect = (16, 9)

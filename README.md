@@ -27,6 +27,7 @@ see, and copy or save the result.
 | **Aspect ratio** | Auto, 1:1, 4:3, 3:2, 16:9, 21:9, 9:16, 3:4 |
 | **Grain** | Subtle film noise over the background |
 | **Inner border** | A hairline between the screenshot and the background |
+| **Outer border** | A mat around the screenshot — 8 presets led by a glass sheen that fades across the diagonal, sized as a share of the short edge |
 
 ### Annotate
 

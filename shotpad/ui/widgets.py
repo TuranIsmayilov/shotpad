@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 from PySide6.QtCore import QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QIcon, QPainter, QPixmap
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QFontMetrics,
+    QIcon,
+    QLinearGradient,
+    QPainter,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QColorDialog,
     QFrame,
@@ -236,13 +244,38 @@ class SliderRow(QWidget):
         self._update_label(value)
 
 
-def color_swatch_pixmap(color: QColor, size: int = 18, dpr: float = 1.0) -> QPixmap:
+def color_swatch_pixmap(
+    color: QColor,
+    size: int = 18,
+    dpr: float = 1.0,
+    backdrop: QColor | None = None,
+    glass: bool = False,
+) -> QPixmap:
+    """A rounded chip of `color`, over a checkerboard if it is see-through.
+
+    Pass `backdrop` for colours whose whole job is to sit over something -
+    a translucent border mat, say. The checkerboard answers "does this have an
+    alpha channel", which for those is the least interesting thing about them:
+    every preset looks like the same grey lattice. Compositing over the actual
+    background instead shows what the colour *does* to it, so a 25% white reads
+    as a light frost and a 25% black reads as a dark one.
+
+    `glass` previews the sheen the renderer draws for a glass mat, so the chip
+    in the picker is the same thing that lands on the canvas. The backdrop is
+    deliberately one flat tone and not the background's own gradient: the sheen
+    runs along the same diagonal most gradients do, and the two cancel out - on
+    Ocean a glass chip came out looking *flatter* than a plain frost one.
+    """
     pixmap = QPixmap(int(size * dpr), int(size * dpr))
     pixmap.setDevicePixelRatio(dpr)
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    if color.alpha() < 255:
+    if backdrop is not None:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(backdrop)
+        painter.drawRoundedRect(0, 0, size, size, 5, 5)
+    elif color.alpha() < 255:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255))
         painter.drawRoundedRect(0, 0, size, size, 5, 5)
@@ -250,7 +283,17 @@ def color_swatch_pixmap(color: QColor, size: int = 18, dpr: float = 1.0) -> QPix
         painter.drawRect(0, 0, size // 2, size // 2)
         painter.drawRect(size // 2, size // 2, size // 2, size // 2)
     painter.setPen(QColor(0, 0, 0, 70))
-    painter.setBrush(color)
+    if glass:
+        from ..render import GLASS_FALLOFF
+
+        far = QColor(color)
+        far.setAlpha(int(round(color.alpha() * GLASS_FALLOFF)))
+        sheen = QLinearGradient(0, 0, size, size)
+        sheen.setColorAt(0.0, color)
+        sheen.setColorAt(1.0, far)
+        painter.setBrush(QBrush(sheen))
+    else:
+        painter.setBrush(color)
     painter.drawRoundedRect(0, 0, size - 1, size - 1, 5, 5)
     painter.end()
     return pixmap
@@ -266,11 +309,14 @@ class ColorButton(QPushButton):
         color: QColor,
         with_alpha: bool = False,
         label: str = "",
+        backdrop: QColor | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._color = QColor(color)
         self._with_alpha = with_alpha
+        self._backdrop = backdrop
+        self._glass = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(30)
         if label:
@@ -282,9 +328,21 @@ class ColorButton(QPushButton):
         self._refresh()
 
     def _refresh(self) -> None:
-        self.setIcon(QIcon(color_swatch_pixmap(self._color, 18, 2.0)))
+        self.setIcon(QIcon(color_swatch_pixmap(
+            self._color, 18, 2.0, self._backdrop, self._glass
+        )))
         self.setIconSize(QSize(18, 18))
-        self.setToolTip(self._color.name(QColor.NameFormat.HexArgb))
+        hex_argb = self._color.name(QColor.NameFormat.HexArgb)
+        self.setToolTip(f"{hex_argb}, glass sheen" if self._glass else hex_argb)
+
+    def set_backdrop(self, backdrop: QColor | None) -> None:
+        self._backdrop = backdrop
+        self._refresh()
+
+    def set_glass(self, glass: bool) -> None:
+        """Preview the colour as a glass sheen rather than a flat fill."""
+        self._glass = bool(glass)
+        self._refresh()
 
     def color(self) -> QColor:
         return QColor(self._color)
@@ -315,17 +373,26 @@ class SwatchGrid(QWidget):
 
     def __init__(
         self, colors: list[str], columns: int = 8, size: int = 22,
+        backdrop: QColor | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._size = size
         self._columns = columns
+        self._backdrop = backdrop
+        self._colors: list[str] = []
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(5)
         self.set_colors(colors)
 
+    def set_backdrop(self, backdrop: QColor | None) -> None:
+        """Re-render the swatches over a different background."""
+        self._backdrop = backdrop
+        self.set_colors(self._colors)
+
     def set_colors(self, colors: list[str]) -> None:
+        self._colors = list(colors)
         while self._layout.count():
             item = self._layout.takeAt(0)
             widget = item.widget()
@@ -337,11 +404,71 @@ class SwatchGrid(QWidget):
             button.setObjectName("Flat")
             button.setFixedSize(self._size, self._size)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
-            button.setIcon(QIcon(color_swatch_pixmap(color, self._size - 4, 2.0)))
+            button.setIcon(QIcon(color_swatch_pixmap(
+                color, self._size - 4, 2.0, self._backdrop
+            )))
             button.setIconSize(QSize(self._size - 4, self._size - 4))
-            button.setToolTip(color.name())
+            button.setToolTip(
+                color.name(QColor.NameFormat.HexArgb)
+                if color.alpha() < 255
+                else color.name()
+            )
             button.clicked.connect(
                 lambda _=False, c=QColor(color): self.picked.emit(c)
+            )
+            self._layout.addWidget(
+                button, index // self._columns, index % self._columns
+            )
+
+
+class BorderSwatchGrid(QWidget):
+    """The outer-border presets.
+
+    Its own widget rather than a SwatchGrid because a border preset is not just
+    a colour: the glass one is a sheen, and clicking it has to carry that along
+    with the colour. Emits the BorderPreset itself.
+    """
+
+    picked = Signal(object)
+
+    def __init__(
+        self, presets, columns: int = 8, size: int = 22,
+        backdrop: QColor | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._presets = list(presets)
+        self._size = size
+        self._columns = columns
+        self._backdrop = backdrop
+        self._layout = QGridLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(5)
+        self._rebuild()
+
+    def set_backdrop(self, backdrop: QColor | None) -> None:
+        self._backdrop = backdrop
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        while self._layout.count():
+            item = self._layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        for index, preset in enumerate(self._presets):
+            color = QColor(preset.color)
+            button = QPushButton()
+            button.setObjectName("Flat")
+            button.setFixedSize(self._size, self._size)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setIcon(QIcon(color_swatch_pixmap(
+                color, self._size - 4, 2.0, self._backdrop, preset.glass
+            )))
+            button.setIconSize(QSize(self._size - 4, self._size - 4))
+            button.setToolTip(preset.name)
+            button.clicked.connect(
+                lambda _=False, p=preset: self.picked.emit(p)
             )
             self._layout.addWidget(
                 button, index // self._columns, index % self._columns

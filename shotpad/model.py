@@ -39,6 +39,30 @@ SOLID_PRESETS: list[str] = [
     "#b45309", "#b91c1c", "#a21caf", "#4c1d95",
 ]
 
+@dataclass(frozen=True)
+class BorderPreset:
+    """One choice in the outer-border swatch row."""
+
+    name: str
+    color: str          # #AARRGGBB
+    glass: bool = False
+
+
+#: Outer-border presets. Glass comes first because it is the one that reads as
+#: a real frame rather than a coloured margin - see FrameSpec.outer_border_glass.
+#: The flat whites step up from Glass's 25% rather than repeating it: two chips
+#: that differ only by a sheen are indistinguishable at swatch size.
+BORDER_PRESETS: list[BorderPreset] = [
+    BorderPreset("Glass", "#40ffffff", glass=True),
+    BorderPreset("Frost", "#59ffffff"),
+    BorderPreset("Frost, strong", "#8cffffff"),
+    BorderPreset("White", "#ffffffff"),
+    BorderPreset("Smoke", "#40000000"),
+    BorderPreset("Smoke, strong", "#73000000"),
+    BorderPreset("Black", "#ff000000"),
+    BorderPreset("Paper", "#fff4f4f5"),
+]
+
 ASPECT_PRESETS: list[tuple[str, tuple[int, int] | None]] = [
     ("Auto", None),
     ("1:1", (1, 1)),
@@ -88,12 +112,24 @@ class FrameSpec:
     aspect: tuple[int, int] | None = None
     border_width: float = 0.0
     border_color: QColor = field(default_factory=lambda: QColor(255, 255, 255, 60))
+    # The outer border is a band *around* the screenshot rather than a stroke on
+    # top of it, so it is sized as a fraction of the short edge instead of in
+    # pixels: a 2% mat looks the same on a small crop and on a 4K capture.
+    outer_border: float = 0.0  # percent of the screenshot's short edge
+    outer_border_color: QColor = field(
+        default_factory=lambda: QColor(255, 255, 255, 64)
+    )
+    # Fade the mat's opacity across the diagonal instead of holding it flat, so
+    # it catches the light like a pane of glass rather than sitting there as an
+    # even wash. See GLASS_FALLOFF in render.py.
+    outer_border_glass: bool = False
 
     def clone(self) -> "FrameSpec":
         return replace(
             self,
             shadow_color=QColor(self.shadow_color),
             border_color=QColor(self.border_color),
+            outer_border_color=QColor(self.outer_border_color),
         )
 
 

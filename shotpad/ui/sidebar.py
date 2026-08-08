@@ -27,10 +27,17 @@ from ..annotations import (
     RedactAnn,
     TextAnn,
 )
-from ..model import ASPECT_PRESETS, GRADIENT_PRESETS, SOLID_PRESETS, Document
+from ..model import (
+    ASPECT_PRESETS,
+    BORDER_PRESETS,
+    GRADIENT_PRESETS,
+    SOLID_PRESETS,
+    Document,
+)
 from ..settings import settings
 from .canvas import Canvas, ToolStyle
 from .widgets import (
+    BorderSwatchGrid,
     Card,
     ColorButton,
     GradientSwatchGrid,
@@ -485,10 +492,45 @@ class Sidebar(QScrollArea):
         card.add(self.rotation_slider)
 
         self.border_slider = SliderRow("Inner border", 0, 12, frame.border_width, 0.5, " px", decimals=1)
+        self.border_slider.setToolTip(
+            "A hairline drawn on top of the screenshot's own edge."
+        )
         self.border_slider.valueChanged.connect(
             lambda v: self._set_frame("border_width", float(v))
         )
         card.add(self.border_slider)
+
+        self.outer_border_slider = SliderRow(
+            "Outer border", 0, 12, frame.outer_border, 0.5, "%", decimals=1
+        )
+        self.outer_border_slider.setToolTip(
+            "A mat around the screenshot. Measured as a share of the short "
+            "edge, so it survives an export at any scale."
+        )
+        self.outer_border_slider.valueChanged.connect(
+            lambda v: self._set_frame("outer_border", float(v))
+        )
+        card.add(self.outer_border_slider)
+
+        border_color_row = QHBoxLayout()
+        border_color_row.setSpacing(8)
+        border_color_label = QLabel("Border colour")
+        border_color_label.setObjectName("FieldLabel")
+        backdrop = self._border_backdrop()
+        self.outer_border_color = ColorButton(
+            frame.outer_border_color, with_alpha=True, backdrop=backdrop
+        )
+        self.outer_border_color.colorChanged.connect(self._on_outer_border_color)
+        border_color_row.addWidget(border_color_label)
+        border_color_row.addStretch(1)
+        border_color_row.addWidget(self.outer_border_color)
+        card.add_layout(border_color_row)
+
+        self.border_grid = BorderSwatchGrid(
+            BORDER_PRESETS, columns=8, size=22, backdrop=backdrop
+        )
+        self.border_grid.picked.connect(self._on_border_preset)
+        card.add(self.border_grid)
 
         aspect_row = QHBoxLayout()
         aspect_row.setSpacing(8)
@@ -511,6 +553,52 @@ class Sidebar(QScrollArea):
         self.canvas.doc.touch_base()
         self.canvas.invalidate(full=True)
         self.changed.emit()
+
+    def _border_backdrop(self) -> QColor:
+        """One representative tone to preview a see-through border mat against.
+
+        The mat sits on the background, so previewing it on anything else would
+        misrepresent it - the same 25% white is a bright frost on Ocean and
+        barely visible on a white solid. A gradient is averaged down to its
+        midpoint rather than reproduced: see color_swatch_pixmap for why the
+        chips must not carry a gradient of their own. An image or transparent
+        background has no colour to borrow, so those fall back to a mid grey.
+        """
+        background = self.canvas.doc.background
+        if background.kind in ("linear", "radial", "conical"):
+            one, two = background.color1, background.color2
+            return QColor(
+                (one.red() + two.red()) // 2,
+                (one.green() + two.green()) // 2,
+                (one.blue() + two.blue()) // 2,
+            )
+        if background.kind == "solid":
+            return QColor(background.color1)
+        return QColor("#7a7a82")
+
+    def _refresh_border_previews(self) -> None:
+        backdrop = self._border_backdrop()
+        self.border_grid.set_backdrop(backdrop)
+        self.outer_border_color.set_backdrop(backdrop)
+
+    def _on_outer_border_color(self, color: QColor) -> None:
+        if self._building:
+            return
+        # Choosing a colour is a statement of intent, and on a zero-width border
+        # it would otherwise do nothing visible - so open the band up enough to
+        # show the choice.
+        if self.canvas.doc.frame.outer_border < 0.25:
+            self.outer_border_slider.setValue(2.5)
+            self.canvas.doc.frame.outer_border = 2.5
+        self._set_frame("outer_border_color", QColor(color))
+
+    def _on_border_preset(self, preset) -> None:
+        """A preset carries the sheen as well as the colour."""
+        self.canvas.doc.frame.outer_border_glass = preset.glass
+        self.outer_border_color.set_glass(preset.glass)
+        # setColor emits, which routes through _on_outer_border_color and does
+        # the repaint - including opening a zero-width border up.
+        self.outer_border_color.setColor(QColor(preset.color))
 
     def _on_aspect(self, index: int) -> None:
         if self._building:
@@ -626,6 +714,7 @@ class Sidebar(QScrollArea):
         if self._building:
             return
         setattr(self.canvas.doc.background, attribute, value)
+        self._refresh_border_previews()
         self.canvas.doc.touch_base()
         self.canvas.invalidate(full=True)
         self.changed.emit()
@@ -666,6 +755,7 @@ class Sidebar(QScrollArea):
         )
         self.bg_color1.setColor(background.color1, emit=False)
         self.bg_color2.setColor(background.color2, emit=False)
+        self._refresh_border_previews()
         self.canvas.doc.touch_base()
         self.canvas.invalidate(full=True)
         self.changed.emit()
@@ -709,6 +799,9 @@ class Sidebar(QScrollArea):
         self.shadow_offset_slider.setValue(frame.shadow_offset)
         self.rotation_slider.setValue(frame.rotation)
         self.border_slider.setValue(frame.border_width)
+        self.outer_border_slider.setValue(frame.outer_border)
+        self.outer_border_color.set_glass(frame.outer_border_glass)
+        self.outer_border_color.setColor(frame.outer_border_color, emit=False)
         index = self.aspect_box.findData(frame.aspect)
         self.aspect_box.setCurrentIndex(max(0, index))
 
@@ -726,4 +819,5 @@ class Sidebar(QScrollArea):
         self.bg_image_blur.setValue(background.image_blur)
         self.bg_image_dim.setValue(background.image_dim * 100)
         self._update_bg_visibility()
+        self._refresh_border_previews()
         self._building = False

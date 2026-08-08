@@ -7,9 +7,10 @@ is literally the export at a smaller scale.
 Layer order:
     1. background (solid / gradient / image / transparent)
     2. drop shadow of the screenshot plate
-    3. the screenshot, rounded and optionally rotated
-    4. pixel effects (blur / pixelate / block redactions), baked into 1-3
-    5. vector annotations
+    3. the outer border, a band around the screenshot
+    4. the screenshot, rounded and optionally rotated
+    5. pixel effects (blur / pixelate / block redactions), baked into 1-4
+    6. vector annotations
 """
 
 from __future__ import annotations
@@ -37,6 +38,14 @@ from .util import blur_image, pixelate_image, rounded_path, scaled_cover
 #: how much canvas a padding of 200 can add.
 PADDING_UNIT = 0.005
 
+#: The outer border slider is read directly as a percentage of the short edge.
+OUTER_BORDER_UNIT = 0.01
+
+#: What a glass mat's opacity decays to at the far corner. Measured off a real
+#: frosted frame: ~25% white along the top and left edges, ~14% along the right
+#: and bottom, so the sheen keeps a little over half its strength.
+GLASS_FALLOFF = 0.55
+
 
 @dataclass(frozen=True)
 class Layout:
@@ -44,10 +53,17 @@ class Layout:
 
     canvas: QSize
     image_rect: QRectF
+    border: float = 0.0  # width of the outer border band
 
     @property
     def canvas_rect(self) -> QRectF:
         return QRectF(0, 0, self.canvas.width(), self.canvas.height())
+
+    @property
+    def plate_rect(self) -> QRectF:
+        """The screenshot plus its outer border - the shape that casts the shadow."""
+        b = self.border
+        return self.image_rect.adjusted(-b, -b, b, b)
 
 
 def canvas_layout(doc: Document) -> Layout:
@@ -57,16 +73,22 @@ def canvas_layout(doc: Document) -> Layout:
     frame = doc.frame
 
     pad = frame.padding * PADDING_UNIT * min(iw, ih)
+    border = max(0.0, frame.outer_border) * OUTER_BORDER_UNIT * min(iw, ih)
+
+    # Padding is the gap the user sees, so it is measured from the outside of
+    # the border band - widening the border pushes the canvas out rather than
+    # eating into the padding.
+    pw, ph = iw + border * 2, ih + border * 2
 
     # A rotated plate needs a slightly bigger box or the corners clip.
     if abs(frame.rotation) > 0.01:
         rad = math.radians(abs(frame.rotation))
-        rot_w = iw * math.cos(rad) + ih * math.sin(rad)
-        rot_h = iw * math.sin(rad) + ih * math.cos(rad)
+        rot_w = pw * math.cos(rad) + ph * math.sin(rad)
+        rot_h = pw * math.sin(rad) + ph * math.cos(rad)
         pad_x = pad + (rot_w - iw) / 2
         pad_y = pad + (rot_h - ih) / 2
     else:
-        pad_x = pad_y = pad
+        pad_x = pad_y = pad + border
 
     cw = iw + pad_x * 2
     ch = ih + pad_y * 2
@@ -82,7 +104,7 @@ def canvas_layout(doc: Document) -> Layout:
     cw = max(1.0, cw)
     ch = max(1.0, ch)
     image_rect = QRectF((cw - iw) / 2.0, (ch - ih) / 2.0, iw, ih)
-    return Layout(QSize(int(round(cw)), int(round(ch))), image_rect)
+    return Layout(QSize(int(round(cw)), int(round(ch))), image_rect, border)
 
 
 # ---------------------------------------------------------------------------
@@ -191,6 +213,36 @@ def _radius_for(frame: FrameSpec, image_rect: QRectF) -> float:
     return frame.corner_radius * 0.01 * min(image_rect.width(), image_rect.height()) * 0.5
 
 
+def _plate_radius(frame: FrameSpec, layout: Layout) -> float:
+    """Outer radius of the border band, concentric with the screenshot's.
+
+    Adding the band width keeps the two curves parallel, so the band stays an
+    even thickness all the way round instead of pinching at the corners. A
+    square screenshot keeps a square band.
+    """
+    inner = _radius_for(frame, layout.image_rect)
+    return inner + layout.border if inner > 0.01 else 0.0
+
+
+def _dev(rect: QRectF, scale: float) -> QRectF:
+    """A document-unit rect in device pixels."""
+    return QRectF(
+        rect.x() * scale, rect.y() * scale, rect.width() * scale, rect.height() * scale
+    )
+
+
+def _rotation(frame: FrameSpec, layout: Layout, scale: float) -> QTransform | None:
+    """The tilt shared by the shadow, the border band and the screenshot."""
+    if abs(frame.rotation) <= 0.01:
+        return None
+    center = layout.image_rect.center()
+    transform = QTransform()
+    transform.translate(center.x() * scale, center.y() * scale)
+    transform.rotate(frame.rotation)
+    transform.translate(-center.x() * scale, -center.y() * scale)
+    return transform
+
+
 def _draw_shadow(
     painter: QPainter, layout: Layout, frame: FrameSpec, scale: float
 ) -> None:
@@ -203,9 +255,12 @@ def _draw_shadow(
     if frame.shadow_strength <= 0:
         return
 
-    rect = layout.image_rect
-    short_edge = min(rect.width(), rect.height())
-    radius = _radius_for(frame, rect) * scale
+    # The band is part of the plate, so it is what throws the shadow - but the
+    # blur and offset stay keyed to the screenshot, so framing a shot does not
+    # silently restyle its shadow.
+    rect = layout.plate_rect
+    short_edge = min(layout.image_rect.width(), layout.image_rect.height())
+    radius = _plate_radius(frame, layout) * scale
     blur = max(1.5, frame.shadow_blur * 0.006 * short_edge * scale)
     offset = frame.shadow_offset * 0.006 * short_edge * scale
 
@@ -230,17 +285,57 @@ def _draw_shadow(
 
     painter.save()
     painter.setOpacity(min(1.0, frame.shadow_strength / 100.0))
-    if abs(frame.rotation) > 0.01:
-        center = rect.center()
-        rot = QTransform()
-        rot.translate(center.x() * scale, center.y() * scale)
-        rot.rotate(frame.rotation)
-        rot.translate(-center.x() * scale, -center.y() * scale)
-        painter.setTransform(rot)
+    rotation = _rotation(frame, layout, scale)
+    if rotation is not None:
+        painter.setTransform(rotation)
     painter.drawImage(
         QPointF(rect.x() * scale - margin, rect.y() * scale - margin + offset), shadow
     )
     painter.restore()
+
+
+def _draw_outer_border(
+    painter: QPainter, layout: Layout, frame: FrameSpec, scale: float
+) -> None:
+    """The band around the screenshot, laid down before the screenshot itself.
+
+    Filling the whole plate and letting the screenshot cover the middle is what
+    keeps a translucent band honest. Stroking the plate edge instead would blend
+    the inner half of the stroke with the screenshot's own pixels, so the mat
+    would read as a different colour on a dark shot than on a light one.
+    """
+    if layout.border <= 0.05 or frame.outer_border_color.alpha() == 0:
+        return
+
+    painter.save()
+    rotation = _rotation(frame, layout, scale)
+    if rotation is not None:
+        painter.setTransform(rotation)
+    dev_rect = _dev(layout.plate_rect, scale)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(border_brush(frame, dev_rect))
+    painter.drawPath(rounded_path(dev_rect, _plate_radius(frame, layout) * scale))
+    painter.restore()
+
+
+def border_brush(frame: FrameSpec, rect: QRectF) -> QBrush:
+    """How the outer border is filled: a flat colour, or a glass sheen.
+
+    The sheen runs top-left to bottom-right, which is where the light comes
+    from in every other shadow this app draws, and fades the *alpha* rather
+    than the colour - so it stays a see-through pane picking up the background
+    instead of turning into a white-to-grey stripe.
+    """
+    near = QColor(frame.outer_border_color)
+    if not frame.outer_border_glass:
+        return QBrush(near)
+
+    far = QColor(near)
+    far.setAlpha(int(round(near.alpha() * GLASS_FALLOFF)))
+    gradient = QLinearGradient(rect.topLeft(), rect.bottomRight())
+    gradient.setColorAt(0.0, near)
+    gradient.setColorAt(1.0, far)
+    return QBrush(gradient)
 
 
 def _draw_plate(
@@ -251,20 +346,13 @@ def _draw_plate(
         return
 
     frame = doc.frame
-    rect = layout.image_rect
-    dev_rect = QRectF(
-        rect.x() * scale, rect.y() * scale, rect.width() * scale, rect.height() * scale
-    )
-    radius = _radius_for(frame, rect) * scale
+    dev_rect = _dev(layout.image_rect, scale)
+    radius = _radius_for(frame, layout.image_rect) * scale
 
     painter.save()
-    if abs(frame.rotation) > 0.01:
-        center = rect.center()
-        transform = QTransform()
-        transform.translate(center.x() * scale, center.y() * scale)
-        transform.rotate(frame.rotation)
-        transform.translate(-center.x() * scale, -center.y() * scale)
-        painter.setTransform(transform)
+    rotation = _rotation(frame, layout, scale)
+    if rotation is not None:
+        painter.setTransform(rotation)
 
     path = rounded_path(dev_rect, radius)
     painter.setClipPath(path, Qt.ClipOperation.IntersectClip)
@@ -347,6 +435,7 @@ def render_base(doc: Document, scale: float = 1.0) -> QImage:
     painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
     draw_background(painter, doc.background, QRectF(0, 0, width, height))
     _draw_shadow(painter, layout, doc.frame, scale)
+    _draw_outer_border(painter, layout, doc.frame, scale)
     _draw_plate(painter, doc, layout, scale)
     painter.end()
     return image
