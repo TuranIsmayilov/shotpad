@@ -6,7 +6,8 @@ A screenshot capture-and-annotate app for Linux, built to work the same on
 
 Take a shot, drop it on a gradient with padding and a soft shadow, point at
 things with arrows, scribble with the pen, blur out the parts nobody should
-see, and copy or save the result.
+see, **grab the text straight out of the picture**, and copy or save the
+result.
 
 ![A screenshot framed by Shotpad: padding, rounded corners and a soft shadow over a teal gradient](docs/screenshot.png)
 
@@ -38,7 +39,6 @@ see, and copy or save the result.
 | Highlighter | `H` | Translucent, multiply-blended |
 | Arrow | `A` | Optional second arrowhead; `Shift` snaps to 15° |
 | Line | `L` | Solid or dashed |
-| Grab text | `G` | Drag a box over text to copy it. Reads the exported picture, so redactions stay hidden |
 | Rectangle | `R` | Outline or filled, with its own corner radius |
 | Ellipse | `E` | Outline or filled |
 | Text | `T` | Any installed font, with a readable outline or a label plate |
@@ -48,6 +48,25 @@ see, and copy or save the result.
 | Crop | `C` | Handles, rule-of-thirds guides, `Enter` to apply |
 
 Plus rotate, flip, unlimited undo/redo, and export at 1×/1.5×/2×/3×.
+
+### Read the text back out
+
+**Grab text** (`G`) turns a screenshot back into text. Drag a box over an error
+code, a licence key or a URL that only exists as pixels, and it is on your
+clipboard.
+
+| | |
+|---|---|
+| **Languages** | English, Turkish, Azerbaijani and Russian, bundled. The picker follows your system language rather than assuming English |
+| **More languages** | Drop any `.traineddata` into `~/.local/share/shotpad/tessdata` — no rebuild, no waiting for a release |
+| **Redactions hold** | It reads the picture as it will be exported, so a blur or a black box is not quietly undone by the tool next to it in the rail |
+| **Small text** | Enlarged before reading, by an amount measured from the image — without it, 1× interface text reads "Comer radius" for "Corner radius" |
+| **Offline** | The recogniser is bundled and runs on your machine. Nothing is uploaded, and it works with no network at all |
+
+Finding nothing leaves your clipboard alone; the status bar reports what was
+copied, and says so when the reading looks doubtful.
+
+This is text recognition only — Shotpad's own interface is English.
 
 The tool rail names every tool beside its icon. The ☰ button at the top of it
 collapses the rail to icons only, and it opens the way you last left it.
@@ -375,9 +394,10 @@ lets Shotpad capture through it directly, with no prompt involved.
 ## Building the AppImage
 
 ```bash
-./packaging/build-appimage.sh              # -> dist/Shotpad-1.0.5-x86_64.AppImage
+./packaging/build-appimage.sh              # -> dist/Shotpad-1.0.7-x86_64.AppImage
 ./packaging/build-appimage.sh --arch aarch64
 ./packaging/build-appimage.sh --no-prune   # keep all of Qt, for debugging
+./packaging/build-appimage.sh --no-ocr     # skip the text recogniser
 ```
 
 The script downloads a relocatable CPython from
@@ -391,7 +411,29 @@ a default install) and verifies that both the `xcb` and `wayland` platform
 plugins resolve every library they need - a missing one there would otherwise
 only surface on a user's machine as "could not load the Qt platform plugin".
 
-Result: about **55 MB**, with no dependency on anything installed on the host.
+### The text recogniser
+
+`packaging/build-tesseract.sh` compiles Tesseract into a single static binary,
+cached in `build/cache` so it is built once. It needs **cmake and a C++
+compiler**; without them the AppImage still builds, just without Grab text, and
+the tool reports itself unavailable rather than failing.
+
+It is built from source rather than taken from a distribution because Debian's
+`libtesseract` lists libcurl and libarchive as hard `DT_NEEDED` entries, and
+following that closure drags in OpenSSL, Kerberos and libxml2 — roughly 23 MB
+and a standing CVE obligation, for URL and archive input a screenshot tool never
+reaches. Configured without them, and with a Leptonica stripped of every
+image-format backend, it has no dynamic dependencies at all. Leptonica keeps its
+PNM reader and Qt writes PPM, which is how the two talk.
+
+The static link is what protects the AppImage's reach: built dynamically on a
+current distribution it demands GLIBC 2.38, where the bundled Qt asks only for
+2.28 — which would quietly drop Debian 12, Ubuntu 22.04 and RHEL 9. The builder
+refuses to emit a binary carrying any `NEEDED` entry, so a link that stops being
+static fails the build instead of shipping.
+
+Result: about **65 MB** (55 MB with `--no-ocr`), with no dependency on anything
+installed on the host.
 
 ---
 

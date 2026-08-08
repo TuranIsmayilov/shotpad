@@ -29,6 +29,12 @@
       <li>Auto-incrementing numbered badges for step-by-step guides</li>
       <li>Blur, pixelate or block out anything private</li>
       <li>Crop, rotate and flip</li>
+      <li>
+        Grab text: drag a box over any writing in the picture and it is copied
+        to the clipboard, in English, Turkish, Azerbaijani or Russian. Text you
+        have redacted stays hidden. Nothing is sent anywhere - the recogniser
+        runs on your machine and needs no network.
+      </li>
     </ul>
     <p>
       Capture works the same on GNOME, KDE Plasma, XFCE and MATE, on both X11
