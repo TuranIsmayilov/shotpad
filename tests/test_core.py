@@ -1070,6 +1070,208 @@ def test_scrollbars_outrank_the_frameless_resize_edge(app):
         win.close()
 
 
+# ---------------------------------------------------------------------- OCR
+
+
+def test_ocr_groups_words_into_lines_and_drops_the_doubtful(app):
+    """Tesseract emits one TSV row per word; lines are ours to reassemble."""
+    from shotpad.ocr import _lines_from
+
+    def row(block, line, conf, text):
+        # level page block par line word left top width height conf text
+        return ["5", "1", block, "1", line, "1", "0", "0", "10", "10", conf, text]
+
+    lines = _lines_from([
+        row("1", "1", "96.0", "Corner"),
+        row("1", "1", "94.0", "radius"),
+        row("1", "2", "91.0", "Shadow"),
+        row("1", "2", "12.0", "~~~~"),      # a slider track, not a word
+        row("2", "1", "88.0", "Padding"),
+    ])
+    assert [line.text for line in lines] == ["Corner radius", "Shadow", "Padding"]
+    assert lines[0].confidence == pytest.approx(95.0)
+
+
+def test_ocr_result_reports_how_much_to_trust_it(app):
+    from shotpad.ocr import OcrLine, OcrResult
+
+    assert OcrResult().is_empty
+    assert not OcrResult().is_uncertain      # nothing read is not "unclear"
+
+    good = OcrResult(lines=[OcrLine("a clean read", 96.0)])
+    assert not good.is_uncertain
+
+    poor = OcrResult(lines=[OcrLine("sm3ared t3xt", 44.0)])
+    assert poor.is_uncertain
+
+    # Confidence is weighted by length, so one short shaky word cannot drag a
+    # long clean paragraph below the threshold.
+    mixed = OcrResult(lines=[OcrLine("x" * 200, 97.0), OcrLine("??", 20.0)])
+    assert not mixed.is_uncertain
+
+
+def test_grab_text_reads_the_redacted_image_never_the_source(app):
+    """Recognising raw pixels would undo the redaction sitting next to it.
+
+    The single most important property of this tool: if the words are blacked
+    out on screen, they must not arrive on the clipboard in the clear.
+    """
+    from PySide6.QtCore import QRectF
+
+    from shotpad import ocr
+    from shotpad.annotations import RedactAnn
+    from shotpad.ui.window import MainWindow
+
+    doc = Document(make_image(400, 300, "#ffffff"))
+    doc.add_annotation(
+        RedactAnn(
+            start=QPointF(50, 50), end=QPointF(350, 250),
+            mode="solid", color=QColor("#000000"),
+        )
+    )
+
+    window = MainWindow()
+    window.canvas.set_document(doc)
+
+    seen: list[QImage] = []
+    real_recognise, real_available = ocr.recognise, ocr.available
+    ocr.recognise = lambda image, language="eng": seen.append(image) or ocr.OcrResult()
+    ocr.available = lambda: True
+    try:
+        window._grab_text(QRectF(60, 60, 280, 180))
+    finally:
+        ocr.recognise, ocr.available = real_recognise, real_available
+        window.close()
+
+    assert seen, "the region was never handed to the recogniser"
+    handed = seen[0]
+    # Every pixel inside the redaction is the block colour, not the picture.
+    corners = [(1, 1), (handed.width() - 2, 1), (1, handed.height() - 2)]
+    for x, y in corners:
+        assert handed.pixelColor(x, y) == QColor("#000000"), (
+            f"unredacted pixel at {x},{y} reached the recogniser"
+        )
+
+
+def test_grab_text_leaves_the_clipboard_alone_when_it_finds_nothing(app):
+    """Wiping the clipboard with nothing is the worst outcome of a stray drag."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtWidgets import QApplication
+
+    from shotpad import ocr
+    from shotpad.ui.window import MainWindow
+
+    window = MainWindow()
+    window.canvas.set_document(Document(make_image()))
+    clipboard = QApplication.clipboard()
+    clipboard.setText("something the user still wants")
+
+    real_recognise, real_available = ocr.recognise, ocr.available
+    ocr.recognise = lambda image, language="eng": ocr.OcrResult()
+    ocr.available = lambda: True
+    try:
+        window._grab_text(QRectF(10, 10, 100, 60))
+        assert clipboard.text() == "something the user still wants"
+
+        # And when it is unavailable entirely, it says so rather than failing mute.
+        ocr.available = lambda: False
+        window._grab_text(QRectF(10, 10, 100, 60))
+        assert "not available" in window.statusBar().currentMessage()
+        assert clipboard.text() == "something the user still wants"
+    finally:
+        ocr.recognise, ocr.available = real_recognise, real_available
+        window.close()
+
+
+def test_grab_text_only_fires_for_a_real_sweep(app):
+    """A click is not a region - recognising a 2px box is noise, not intent."""
+    from PySide6.QtCore import QRectF
+
+    from shotpad.ui.canvas import Canvas
+
+    canvas = Canvas()
+    canvas.set_document(Document(make_image()))
+    canvas.resize(600, 500)
+    canvas.set_tool("grabtext")
+    canvas._compute_display()
+
+    fired: list[QRectF] = []
+    canvas.text_region_selected.connect(fired.append)
+
+    def release(rect):
+        canvas._drag_mode = "grabtext"
+        canvas._grab_rect = rect
+        canvas.mouseReleaseEvent(
+            QMouseEvent(
+                QEvent.Type.MouseButtonRelease,
+                QPointF(0, 0), Qt.MouseButton.LeftButton,
+                Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    release(QRectF(100, 100, 1, 1))
+    assert fired == []
+    release(QRectF(100, 100, 200, 40))
+    assert len(fired) == 1
+    # The marquee must not linger once the drag is over.
+    assert canvas._grab_rect is None
+
+
+def test_ocr_language_default_follows_the_locale(app):
+    """English is the wrong guess for most of the people these models are for."""
+    from shotpad import ocr
+
+    real = ocr.languages
+    try:
+        ocr.languages = lambda: ["aze", "eng", "rus", "tur"]
+        # Whatever this machine's locale is, the answer is a bundled model.
+        assert ocr.default_language() in ("aze", "eng", "rus", "tur")
+
+        # With no model for the locale, English is the fallback...
+        ocr.languages = lambda: ["eng"]
+        assert ocr.default_language() == "eng"
+        # ...and with no English either, something usable rather than a crash.
+        ocr.languages = lambda: ["rus"]
+        assert ocr.default_language() == "rus"
+        ocr.languages = lambda: []
+        assert ocr.default_language() == "eng"
+    finally:
+        ocr.languages = real
+
+
+def test_ocr_language_names_cover_what_the_appimage_bundles(app):
+    """The picker must not show bare codes for the languages we ship."""
+    import re
+
+    from shotpad import ocr
+
+    script = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "packaging", "build-appimage.sh",
+    )
+    with open(script, encoding="utf-8") as handle:
+        match = re.search(r"^OCR_LANGUAGES=\(([^)]*)\)", handle.read(), re.M)
+    assert match, "could not find OCR_LANGUAGES in the build script"
+
+    bundled = match.group(1).split()
+    assert bundled, "the build script bundles no languages"
+    for code in bundled:
+        assert code in ocr.LANGUAGE_NAMES, f"{code} would show as a bare code"
+        assert ocr.language_name(code) != code
+
+
+def test_ocr_is_optional_and_says_so(app):
+    """A build without the engine must degrade, not raise."""
+    from shotpad import ocr
+
+    # Whatever this machine has, the predicate and the accessors agree.
+    if ocr.tesseract_path() is None or ocr.tessdata_dir() is None:
+        assert not ocr.available()
+        assert ocr.languages() == [] or ocr.tessdata_dir() is not None
+    assert isinstance(ocr.languages(), list)
+    assert ocr.recognise(QImage()).is_empty
+
+
 def test_area_erase_takes_what_it_covers_and_leaves_the_rest(app):
     """The eraser's box deletes by geometry, not by bounding box.
 

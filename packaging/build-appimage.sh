@@ -8,7 +8,8 @@
 # x86_64 or aarch64 Linux regardless of which desktop is installed.
 #
 # Usage:
-#   ./packaging/build-appimage.sh [--no-prune] [--arch x86_64|aarch64] [--out DIR]
+#   ./packaging/build-appimage.sh [--no-prune] [--no-ocr]
+#                                 [--arch x86_64|aarch64] [--out DIR]
 
 set -euo pipefail
 
@@ -23,6 +24,15 @@ APP_ID="io.github.TuranIsmayilov.Shotpad"
 PYTHON_VERSION="3.12"
 PRUNE=1
 ARCH="$(uname -m)"
+OCR=1
+
+#: Languages bundled for the Grab text tool. Each model is 3-4 MB, so this is
+#: a deliberate short list rather than everything Tesseract offers; users can
+#: drop more into ~/.local/share/shotpad/tessdata, which shotpad/ocr.py reads
+#: first. tessdata_fast is the LSTM-only set - Debian's tesseract-ocr-eng is
+#: byte-identical to it, so there is no smaller honest option.
+OCR_LANGUAGES=(eng tur aze rus)
+TESSDATA_BASE="https://github.com/tesseract-ocr/tessdata_fast/raw/main"
 
 # Pinned fallback if the GitHub API is unreachable or rate-limited.
 PBS_FALLBACK_TAG="20250818"
@@ -36,6 +46,7 @@ PBS_FLAVOUR="install_only_stripped"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --no-prune) PRUNE=0; shift ;;
+        --no-ocr) OCR=0; shift ;;
         --arch) ARCH="$2"; shift 2 ;;
         --out) OUT_DIR="$2"; shift 2 ;;
         -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
@@ -137,6 +148,67 @@ log "Installing PySide6-Essentials"
 log "Adding the Shotpad package"
 cp -r "${REPO_ROOT}/shotpad" "${APPDIR}/usr/app/"
 find "${APPDIR}/usr/app" -name '__pycache__' -type d -prune -exec rm -rf {} +
+
+# ---------------------------------------------------------------------------
+# 2b. Text recognition
+# ---------------------------------------------------------------------------
+# The engine is optional on purpose. shotpad/ocr.py reports it as unavailable
+# and the Grab text tool says so rather than failing, so a machine without a
+# C++ toolchain can still produce a working AppImage - just one without OCR.
+bundle_ocr() {
+    local builder="${PACKAGING}/build-tesseract.sh"
+    local binary="${CACHE_DIR}/tesseract-5.5.0-static-${AI_ARCH}"
+
+    if [[ ! -x "${binary}" ]]; then
+        if ! command -v cmake >/dev/null || ! { command -v c++ >/dev/null || command -v g++ >/dev/null; }; then
+            warn "cmake and a C++ compiler are needed to build the OCR engine."
+            warn "Building without text recognition; pass --no-ocr to silence this."
+            return 0
+        fi
+        if ! "${builder}" --out "${binary}"; then
+            warn "the OCR engine failed to build - continuing without it."
+            return 0
+        fi
+    else
+        echo "    reusing the cached OCR engine"
+    fi
+
+    # Cross-building cannot run the host's binary, and a binary for the wrong
+    # architecture in the bundle is worse than none at all.
+    if [[ "${AI_ARCH}" != "$(uname -m)" ]]; then
+        warn "cross-building for ${AI_ARCH}; skipping the OCR engine."
+        return 0
+    fi
+
+    install -Dm755 "${binary}" "${APPDIR}/usr/bin/tesseract"
+
+    mkdir -p "${APPDIR}/usr/share/tessdata" "${CACHE_DIR}/tessdata"
+    local missing=0
+    for lang in "${OCR_LANGUAGES[@]}"; do
+        local cached="${CACHE_DIR}/tessdata/${lang}.traineddata"
+        if [[ ! -f "${cached}" ]]; then
+            curl -fsSL --retry 3 --max-time 300 -o "${cached}.part" \
+                "${TESSDATA_BASE}/${lang}.traineddata" 2>/dev/null \
+                && mv "${cached}.part" "${cached}" \
+                || { rm -f "${cached}.part"; warn "could not fetch the ${lang} model"; missing=1; continue; }
+        fi
+        install -Dm644 "${cached}" "${APPDIR}/usr/share/tessdata/${lang}.traineddata"
+    done
+
+    if [[ ! -f "${APPDIR}/usr/share/tessdata/eng.traineddata" ]]; then
+        warn "no language models were bundled - removing the OCR engine."
+        rm -rf "${APPDIR}/usr/bin/tesseract" "${APPDIR}/usr/share/tessdata"
+        return 0
+    fi
+    [[ "${missing}" == "1" ]] && warn "some language models are missing from this build."
+
+    echo "    engine $(du -h "${APPDIR}/usr/bin/tesseract" | cut -f1), models: $(ls "${APPDIR}/usr/share/tessdata" | sed 's/\.traineddata//' | tr '\n' ' ')"
+}
+
+if [[ "${OCR}" == "1" ]]; then
+    log "Adding text recognition"
+    bundle_ocr
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Trim the bundle
@@ -357,6 +429,35 @@ print('  package', shotpad.__version__, 'imports OK')
 
 PYTHONPATH="${APPDIR}/usr/app" QT_QPA_PLATFORM=offscreen \
     "${PY}" -s -m shotpad --version >/dev/null || die "shotpad --version failed inside the bundle."
+
+# A bundled engine that cannot read is worse than no engine: ocr.available()
+# would report true and every grab would come back empty. Prove it end to end
+# through the same code path the app uses, with APPDIR set as AppRun sets it.
+if [[ -x "${APPDIR}/usr/bin/tesseract" ]]; then
+    log "Checking text recognition works inside the bundle"
+    APPDIR="${APPDIR}" PYTHONPATH="${APPDIR}/usr/app" QT_QPA_PLATFORM=offscreen \
+        "${PY}" -s -c "
+import sys
+from PySide6.QtGui import QColor, QImage, QPainter, QFont
+from PySide6.QtWidgets import QApplication
+app = QApplication(sys.argv[:1])
+from shotpad import ocr
+if not ocr.available():
+    sys.exit('ocr.available() is false with the engine bundled')
+image = QImage(420, 90, QImage.Format.Format_ARGB32_Premultiplied)
+image.fill(QColor('white'))
+painter = QPainter(image)
+painter.setPen(QColor('black'))
+painter.setFont(QFont('Sans Serif', 32))
+painter.drawText(image.rect(), 0x84, 'Shotpad')
+painter.end()
+result = ocr.recognise(image)
+if 'Shotpad' not in result.text:
+    sys.exit('the bundled engine read %r instead of Shotpad' % result.text)
+print('  read back %r from a rendered sample; languages: %s'
+      % (result.text.strip(), ','.join(ocr.languages())))
+" || die "the bundled OCR engine does not work."
+fi
 
 # Importing under the offscreen platform proves nothing about X11 or Wayland:
 # those plugins are dlopened only on a real session, so a missing dependency

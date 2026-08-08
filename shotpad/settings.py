@@ -37,6 +37,7 @@ DEFAULTS: dict[str, object] = {
     "default_radius": 6,
     "default_shadow": 55,
     "default_background": "linear:#2193b0:#6dd5ed:135",  # Ocean
+    "ocr_language": "",                 # empty -> ocr.default_language()
     "show_home_on_start": True,
     "window_geometry": b"",
 }

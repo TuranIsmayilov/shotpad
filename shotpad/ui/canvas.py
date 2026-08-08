@@ -119,6 +119,9 @@ class Canvas(QWidget):
     tool_finished = Signal()
     zoom_changed = Signal(float)
     crop_mode_changed = Signal(bool)
+    #: A region was swept with the Grab text tool, in source coordinates. The
+    #: window does the recognising - the canvas only says where.
+    text_region_selected = Signal(QRectF)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -143,7 +146,8 @@ class Canvas(QWidget):
         self._drawing: Annotation | None = None
         self._selected: Annotation | None = None
         self._erase_rect: QRectF | None = None
-        self._drag_mode = ""        # "" | move | handle | pan | crop | erase
+        self._grab_rect: QRectF | None = None
+        self._drag_mode = ""        # "" | move | handle | pan | crop | erase | grabtext
         self._drag_handle = -1
         self._drag_origin = QPointF()
         self._drag_start_geometry = None
@@ -165,6 +169,7 @@ class Canvas(QWidget):
         self._selected = None
         self._drawing = None
         self._erase_rect = None
+        self._grab_rect = None
         self.crop_mode = False
         self._crop_rect = None
         self.invalidate(full=True)
@@ -305,6 +310,8 @@ class Canvas(QWidget):
             self._paint_crop(painter)
         elif self._erase_rect is not None:
             self._paint_erase_rect(painter, self._erase_rect)
+        elif self._grab_rect is not None:
+            self._paint_grab_rect(painter, self._grab_rect)
         elif self._selected is not None:
             self._paint_selection(painter, self._selected)
 
@@ -544,6 +551,7 @@ class Canvas(QWidget):
             "highlighter": Qt.CursorShape.CrossCursor,
             "text": Qt.CursorShape.IBeamCursor,
             "eraser": Qt.CursorShape.PointingHandCursor,
+            "grabtext": Qt.CursorShape.CrossCursor,
         }
         self.setCursor(cursors.get(tool, Qt.CursorShape.CrossCursor))
         self.update()
@@ -641,6 +649,12 @@ class Canvas(QWidget):
             self._erase_rect = None
             return
 
+        if self.tool == "grabtext":
+            self._drag_mode = "grabtext"
+            self._drag_origin = source
+            self._grab_rect = None
+            return
+
         if self.tool == "select":
             if self._selected is not None:
                 handle = self._handle_at(self._selected, pos)
@@ -729,6 +743,14 @@ class Canvas(QWidget):
             self.update()
             return
 
+        if self._drag_mode == "grabtext":
+            bounds = QRectF(0, 0, self.doc.source.width(), self.doc.source.height())
+            self._grab_rect = QRectF(
+                self._drag_origin, source
+            ).normalized().intersected(bounds)
+            self.update()
+            return
+
         if self._drawing is not None:
             self._update_drawing(source, event.modifiers())
             self.update()
@@ -785,6 +807,24 @@ class Canvas(QWidget):
             self.selection_changed.emit(None)
         self.invalidate(full=any(a.pixel_effect for a in targets))
         self.document_changed.emit()
+
+    def _paint_grab_rect(self, painter: QPainter, rect: QRectF) -> None:
+        """The region about to be read. Accent-coloured, so it does not read as
+        the eraser's destructive red or the crop's commitment."""
+        accent = QColor(current_theme().accent)
+        quad = [
+            self.source_to_widget(rect.topLeft()),
+            self.source_to_widget(rect.topRight()),
+            self.source_to_widget(rect.bottomRight()),
+            self.source_to_widget(rect.bottomLeft()),
+        ]
+        fill = QColor(accent)
+        fill.setAlpha(34)
+        pen = QPen(accent, 1.4)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(fill))
+        painter.drawPolygon(quad)
 
     def _paint_erase_rect(self, painter: QPainter, rect: QRectF) -> None:
         """The area the eraser is about to clear, in the colour of removal."""
@@ -850,6 +890,17 @@ class Canvas(QWidget):
             self._drag_mode = ""
             rect, self._erase_rect = self._erase_rect, None
             self._erase(rect)
+            return
+
+        if self._drag_mode == "grabtext":
+            self._drag_mode = ""
+            rect, self._grab_rect = self._grab_rect, None
+            self.update()
+            # A stray click is not a region; recognising a 2px box would only
+            # produce noise and clear the marquee for nothing.
+            slack = self._source_length(6.0)
+            if rect is not None and rect.width() > slack and rect.height() > slack:
+                self.text_region_selected.emit(rect)
             return
 
         if self._drawing is not None:

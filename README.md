@@ -38,6 +38,7 @@ see, and copy or save the result.
 | Highlighter | `H` | Translucent, multiply-blended |
 | Arrow | `A` | Optional second arrowhead; `Shift` snaps to 15° |
 | Line | `L` | Solid or dashed |
+| Grab text | `G` | Drag a box over text to copy it. Reads the exported picture, so redactions stay hidden |
 | Rectangle | `R` | Outline or filled, with its own corner radius |
 | Ellipse | `E` | Outline or filled |
 | Text | `T` | Any installed font, with a readable outline or a label plate |

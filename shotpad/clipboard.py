@@ -41,6 +41,19 @@ def set_clipboard_image(image: QImage) -> None:
         clipboard.setImage(image)
 
 
+def set_clipboard_text(text: str) -> None:
+    """Put recognised text on the clipboard.
+
+    No persistent holder here, unlike copy_image_persistent: the window is
+    still open after a text grab, so the process that owns the selection is
+    not about to vanish. Text also survives in most clipboard managers, which
+    is the case images fall down on.
+    """
+    clipboard = QGuiApplication.clipboard()
+    if clipboard is not None:
+        clipboard.setText(text)
+
+
 def _holder_command(path: str) -> list[str] | None:
     """How to launch a second copy of Shotpad as the clipboard holder."""
     appimage = os.environ.get("APPIMAGE")

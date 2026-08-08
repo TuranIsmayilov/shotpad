@@ -197,6 +197,32 @@ class Sidebar(QScrollArea):
         self.eraser_hint.setWordWrap(True)
         card.add(self.eraser_hint)
 
+        self.grabtext_hint = QLabel(
+            "Drag a box over some text to copy it to the clipboard. Reads the "
+            "picture as it will be exported, so anything you have redacted "
+            "stays hidden."
+        )
+        self.grabtext_hint.setObjectName("FieldLabel")
+        self.grabtext_hint.setWordWrap(True)
+        card.add(self.grabtext_hint)
+
+        self.ocr_language_row = QWidget()
+        language_row = QHBoxLayout(self.ocr_language_row)
+        language_row.setContentsMargins(0, 0, 0, 0)
+        language_row.setSpacing(8)
+        language_label = QLabel("Language")
+        language_label.setObjectName("FieldLabel")
+        self.ocr_language = QComboBox()
+        self.ocr_language.setToolTip(
+            "Which alphabet to expect. Drop more .traineddata files into "
+            "~/.local/share/shotpad/tessdata to add languages."
+        )
+        self.ocr_language.currentIndexChanged.connect(self._on_ocr_language)
+        language_row.addWidget(language_label)
+        language_row.addWidget(self.ocr_language, 1)
+        card.add(self.ocr_language_row)
+        self._load_ocr_languages()
+
         self.root.addWidget(card)
 
     def update_for_tool(self, tool: str) -> None:
@@ -213,6 +239,7 @@ class Sidebar(QScrollArea):
             "redact": "Redact",
             "eraser": "Eraser",
             "crop": "Crop",
+            "grabtext": "Grab text",
         }
         self.tool_name.setText(titles.get(tool, tool.title()))
 
@@ -228,6 +255,10 @@ class Sidebar(QScrollArea):
 
         self.select_hint.setVisible(tool == "select" and ann is None)
         self.eraser_hint.setVisible(tool == "eraser")
+        self.grabtext_hint.setVisible(tool == "grabtext")
+        self.ocr_language_row.setVisible(
+            tool == "grabtext" and self.ocr_language.count() > 1
+        )
 
     def _set_colour_controls_visible(self, visible: bool) -> None:
         self.color_button.setVisible(visible)
@@ -239,7 +270,8 @@ class Sidebar(QScrollArea):
 
     def _show_controls_for_tool(self, tool: str) -> None:
         stroke_tools = {"pen", "highlighter", "line", "arrow", "rect", "ellipse", "number"}
-        self._set_colour_controls_visible(tool not in ("eraser", "crop"))
+        # Grab text draws nothing, so a colour would be a control that lies.
+        self._set_colour_controls_visible(tool not in ("eraser", "crop", "grabtext"))
 
         self.width_slider.setVisible(tool in stroke_tools)
         self.fill_check.setVisible(tool in ("rect", "ellipse"))
@@ -442,6 +474,29 @@ class Sidebar(QScrollArea):
     def _on_redact_strength(self, value: float) -> None:
         self._style().redact_strength = value
         self._after_style_change()
+
+    def _load_ocr_languages(self) -> None:
+        """Fill the picker from whatever models this install can actually see."""
+        from .. import ocr
+
+        installed = ocr.languages()
+        blocked = self.ocr_language.blockSignals(True)
+        try:
+            self.ocr_language.clear()
+            for code in installed:
+                self.ocr_language.addItem(ocr.language_name(code), code)
+            chosen = str(settings.get("ocr_language") or "") or ocr.default_language()
+            index = self.ocr_language.findData(chosen)
+            self.ocr_language.setCurrentIndex(max(0, index))
+        finally:
+            self.ocr_language.blockSignals(blocked)
+        # One language is not a choice, and none means no engine at all.
+        self.ocr_language_row.setVisible(len(installed) > 1)
+
+    def _on_ocr_language(self, index: int) -> None:
+        code = self.ocr_language.itemData(index)
+        if code:
+            settings.set("ocr_language", code)
 
     def _on_number_size(self, value: float) -> None:
         self._style().number_radius = value

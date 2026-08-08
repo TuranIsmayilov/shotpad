@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
+from PySide6.QtCore import QEvent, QRect, QRectF, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import (
     QAction,
     QActionGroup,
@@ -52,7 +52,11 @@ from ..capture import (
     portal_screenshot,
     window_listing_supported,
 )
-from ..clipboard import copy_image_persistent, set_clipboard_image
+from ..clipboard import (
+    copy_image_persistent,
+    set_clipboard_image,
+    set_clipboard_text,
+)
 from ..icons import icon as make_icon
 from ..model import Document
 from ..render import export_scale_for, render_document
@@ -84,6 +88,7 @@ TOOLS = [
     ("redact", "blur", "Redact", "Blur / pixelate / block out", "B"),
     ("eraser", "eraser", "Eraser", "Erase a mark, or drag over several", "X"),
     ("crop", "crop", "Crop", "Crop", "C"),
+    ("grabtext", "grabtext", "Grab text", "Read text out of the image", "G"),
 ]
 
 
@@ -523,6 +528,7 @@ class MainWindow(QMainWindow):
         self.canvas.tool_finished.connect(self._on_tool_finished)
         self.canvas.crop_mode_changed.connect(self._on_crop_mode)
         self.canvas.selection_changed.connect(lambda _: self._update_actions())
+        self.canvas.text_region_selected.connect(self._grab_text)
 
         self.sidebar.changed.connect(self._on_document_changed)
         self.sidebar.style_changed.connect(lambda: self.canvas.update())
@@ -933,6 +939,71 @@ class MainWindow(QMainWindow):
         if not silent:
             self.copy_button.flash()
             self.statusBar().showMessage("Copied to the clipboard", 4000)
+
+    # -------------------------------------------------------------- grab text
+    def _grab_text(self, region: QRectF) -> None:
+        """Read the swept region and put the words on the clipboard.
+
+        Straight to the clipboard rather than into a review panel: you chose
+        the tool and dragged a box over specific words, so the copy *is* the
+        thing you asked for - unlike copy-on-close, which ships off because it
+        attaches a clipboard write to an unrelated action. What the panel would
+        have bought is verification, and the status line gives that back: OCR
+        is fallible, and a silent wrong answer is the failure that costs you.
+        """
+        from .. import ocr
+        from ..render import bake_redactions
+
+        doc = self.canvas.doc
+        if doc.is_empty():
+            return
+
+        if not ocr.available():
+            self.statusBar().showMessage(
+                "Text recognition is not available in this build", 6000
+            )
+            return
+
+        # Read the redacted image, never doc.source. Recognising the raw pixels
+        # would hand back the very text a blur or a black box was drawn to
+        # hide - the tool would quietly undo the redaction it is sitting next
+        # to. bake_redactions works in crop coordinates, so shift the region.
+        image = bake_redactions(doc)
+        origin = doc.crop_rect().topLeft()
+        rect = region.toRect().translated(-origin.x(), -origin.y()).intersected(
+            QRect(0, 0, image.width(), image.height())
+        )
+        if rect.width() < 2 or rect.height() < 2:
+            return
+
+        language = str(settings.get("ocr_language") or "") or ocr.default_language()
+        QApplication.setOverrideCursor(Qt.CursorShape.BusyCursor)
+        try:
+            result = ocr.recognise(image.copy(rect), language)
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        if result.is_empty:
+            # Leave the clipboard alone. Wiping it with nothing is the worst
+            # outcome here, and it is the likely one when the box lands on an
+            # icon or an empty patch by mistake.
+            self.statusBar().showMessage("No text found in that region", 4000)
+            return
+
+        set_clipboard_text(result.text)
+        first = result.lines[0].text
+        if len(first) > 48:
+            first = first[:47] + "…"
+        characters = len(result.text)
+        summary = f"Copied {characters} character{'' if characters == 1 else 's'}"
+        if result.is_uncertain:
+            # Say so rather than claim a clean read; the text is still there to
+            # paste and fix, but the user should look at it first.
+            self.statusBar().showMessage(
+                f"{summary}, but the text is unclear: “{first}”", 8000
+            )
+        else:
+            self.statusBar().showMessage(f"{summary}: “{first}”", 6000)
 
     # ------------------------------------------------------------------ edit
     def undo(self) -> None:

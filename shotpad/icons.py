@@ -37,6 +37,9 @@ _PATHS: dict[str, str] = {
     "blur": '<path d="M12 3.5s6 6.2 6 10a6 6 0 0 1-12 0c0-3.8 6-10 6-10z"/><path d="M9.3 14.6a2.9 2.9 0 0 0 2.9 2.6"/>',
     "eraser": '<path d="M8.5 20.5H20"/><path d="M14.2 3.8l6 6a1.8 1.8 0 0 1 0 2.5l-7.4 7.4a1.8 1.8 0 0 1-2.5 0l-6-6a1.8 1.8 0 0 1 0-2.5l7.4-7.4a1.8 1.8 0 0 1 2.5 0z"/><path d="M7 9l8 8"/>',
     "crop": '<path d="M6.5 2.5v15h15"/><path d="M2.5 6.5h15v15"/>',
+    # Grab text: a selection frame with lines of type inside it, so it reads as
+    # "pick a region, get words" rather than as another text tool.
+    "grabtext": '<path d="M3 7.5V5.5A2 2 0 0 1 5 3.5h2M17 3.5h2a2 2 0 0 1 2 2v2M21 16.5v2a2 2 0 0 1-2 2h-2M7 20.5H5a2 2 0 0 1-2-2v-2"/><path d="M7.5 8.5h9M7.5 12h9M7.5 15.5h5.5"/>',
     "undo": '<path d="M3.5 8.5h11a6 6 0 0 1 0 12H8"/><path d="M7.5 4.5l-4 4 4 4"/>',
     "redo": '<path d="M20.5 8.5h-11a6 6 0 0 0 0 12H16"/><path d="M16.5 4.5l4 4-4 4"/>',
     "copy": '<rect x="8.5" y="8.5" width="12" height="12" rx="2"/><path d="M15.5 5.5v-1a2 2 0 0 0-2-2h-8a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h1"/>',
