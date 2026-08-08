@@ -71,6 +71,15 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="1.0.7" date="2026-08-08">
+      <description>
+        <p>
+          New Grab text tool: drag a box over any text in a screenshot and it
+          is copied to the clipboard. English, Turkish, Azerbaijani and
+          Russian are included, and text you have redacted stays hidden.
+        </p>
+      </description>
+    </release>
     <release version="1.0.6" date="2026-08-08">
       <description>
         <p>

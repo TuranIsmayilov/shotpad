@@ -1,6 +1,6 @@
 """Shotpad - a cross-desktop screenshot annotation and beautifier."""
 
-__version__ = "1.0.6"
+__version__ = "1.0.7"
 
 APP_ID = "io.github.TuranIsmayilov.Shotpad"
 APP_NAME = "Shotpad"
