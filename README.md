@@ -9,7 +9,7 @@ things with arrows, scribble with the pen, blur out the parts nobody should
 see, **grab the text straight out of the picture**, and copy or save the
 result.
 
-![A screenshot framed by Shotpad: padding, rounded corners and a soft shadow over a teal gradient](docs/screenshot.png)
+![Shotpad's editor: a captured web page on a teal gradient with padding, rounded corners and a soft shadow, marked up with an arrow and a circle, the tool rail on the left and the framing controls on the right](docs/screenshot.png)
 
 ---
 
