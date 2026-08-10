@@ -13,6 +13,138 @@ result.
 
 ---
 
+## Install
+
+Two ways, depending on whether you would rather download one file or type one
+command. Both give you the same app, a menu entry and an icon.
+
+### With pipx
+
+First [pipx](https://pipx.pypa.io) itself, if you have not got it:
+
+| Distribution | |
+|---|---|
+| Debian 12+, Ubuntu 23.04+, Mint, Zorin | `sudo apt install pipx` |
+| Fedora | `sudo dnf install pipx` |
+| Arch, Manjaro | `sudo pacman -S python-pipx` |
+| openSUSE | `sudo zypper install python3-pipx` |
+| older releases, or no root | `python3 -m pip install --user pipx` |
+
+Then, once:
+
+```bash
+pipx ensurepath
+```
+
+That puts `~/.local/bin` on your `PATH`, which is where both pipx and `shotpad`
+end up — skip it and the install will look like it worked but leave
+`shotpad: command not found`. Open a new terminal afterwards so the change
+takes effect. Now Shotpad:
+
+```bash
+pipx install git+https://github.com/TuranIsmayilov/shotpad.git
+shotpad --install
+```
+
+`shotpad --install` adds the menu entry, icon and image-file associations;
+`shotpad --uninstall` removes exactly those again.
+
+Needs Python 3.10+. Qt (~100 MB) is downloaded on install. Use pipx rather than
+`pip` — Debian 12+, Ubuntu 23.04+ and Fedora all refuse `pip install` into the
+system Python, which is exactly the problem pipx exists to solve: it gives every
+application its own virtualenv and links just the command into `~/.local/bin`.
+
+### AppImage
+
+For machines without Python, or if you would rather not build anything.
+Download the latest from
+[Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
+
+```bash
+chmod +x Shotpad-1.0.7-x86_64.AppImage
+./Shotpad-1.0.7-x86_64.AppImage          # run it
+./Shotpad-1.0.7-x86_64.AppImage --install  # menu entry and icon
+```
+
+Nothing else needed — it carries its own Python and Qt. It starts about 0.2 s
+slower than a pipx install, because the bundle has to mount itself first.
+
+### From a clone, for hacking on it
+
+```bash
+git clone https://github.com/TuranIsmayilov/shotpad.git
+cd shotpad
+python3 -m venv .venv && . .venv/bin/activate
+pip install -e .
+shotpad
+```
+
+---
+
+## Updating
+
+Shotpad never checks for updates on its own and never phones home, so new
+versions are something you pull when you want them. `shotpad --version` says
+what you are on; [Releases](https://github.com/TuranIsmayilov/shotpad/releases)
+says what is current.
+
+Your preferences live in `~/.config/Shotpad/Shotpad.conf`, outside the app, so
+none of this touches them.
+
+### pipx
+
+```bash
+pipx upgrade shotpad
+```
+
+That re-pulls the git repository and rebuilds. If it reports nothing to do
+even though the release is newer — pip can decide a direct URL is already
+satisfied when the version number has not moved — force it:
+
+```bash
+pipx install --force git+https://github.com/TuranIsmayilov/shotpad.git
+```
+
+The desktop entry points at pipx's stable `~/.local/bin/shotpad` either way, so
+there is nothing to re-register.
+
+### AppImage
+
+Download the new file from
+[Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
+
+```bash
+chmod +x Shotpad-1.0.7-x86_64.AppImage
+./Shotpad-1.0.7-x86_64.AppImage --install   # re-point the menu entry
+rm Shotpad-1.0.6-x86_64.AppImage            # the old one, once you are happy
+```
+
+**Re-running `--install` matters here.** The menu entry and any keyboard
+shortcut hold the *absolute path* of the bundle you installed from, and the
+version is in the filename — so a new download leaves them pointing at the old
+file. `--install` rewrites them; a custom Print Screen binding you added
+yourself has to be updated by hand.
+
+To skip that dance entirely, keep the bundle at a fixed path and overwrite it:
+
+```bash
+mv ~/Downloads/Shotpad-1.1.0-x86_64.AppImage ~/.local/bin/shotpad.AppImage
+```
+
+Install once from there and every later update is just that one `mv`.
+
+### From a clone
+
+```bash
+git pull
+pip install -e .    # only if the dependencies changed
+```
+
+An editable install already runs your working tree, so a `git pull` is usually
+the whole update.
+
+---
+
 ## Features
 
 ### Beautify
@@ -142,138 +274,6 @@ Drag the header to move the window, double-click it to maximise, and drag any
 edge to resize - all three go through the compositor, so they behave the same on
 X11 and Wayland. If your window manager handles frameless windows badly,
 Preferences → General can hand the title bar back to the desktop.
-
----
-
-## Install
-
-Two ways, depending on whether you would rather download one file or type one
-command. Both give you the same app, a menu entry and an icon.
-
-### With pipx
-
-First [pipx](https://pipx.pypa.io) itself, if you have not got it:
-
-| Distribution | |
-|---|---|
-| Debian 12+, Ubuntu 23.04+, Mint, Zorin | `sudo apt install pipx` |
-| Fedora | `sudo dnf install pipx` |
-| Arch, Manjaro | `sudo pacman -S python-pipx` |
-| openSUSE | `sudo zypper install python3-pipx` |
-| older releases, or no root | `python3 -m pip install --user pipx` |
-
-Then, once:
-
-```bash
-pipx ensurepath
-```
-
-That puts `~/.local/bin` on your `PATH`, which is where both pipx and `shotpad`
-end up — skip it and the install will look like it worked but leave
-`shotpad: command not found`. Open a new terminal afterwards so the change
-takes effect. Now Shotpad:
-
-```bash
-pipx install git+https://github.com/TuranIsmayilov/shotpad.git
-shotpad --install
-```
-
-`shotpad --install` adds the menu entry, icon and image-file associations;
-`shotpad --uninstall` removes exactly those again.
-
-Needs Python 3.10+. Qt (~100 MB) is downloaded on install. Use pipx rather than
-`pip` — Debian 12+, Ubuntu 23.04+ and Fedora all refuse `pip install` into the
-system Python, which is exactly the problem pipx exists to solve: it gives every
-application its own virtualenv and links just the command into `~/.local/bin`.
-
-### AppImage
-
-For machines without Python, or if you would rather not build anything.
-Download the latest from
-[Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
-
-```bash
-chmod +x Shotpad-1.0.5-x86_64.AppImage
-./Shotpad-1.0.5-x86_64.AppImage          # run it
-./Shotpad-1.0.5-x86_64.AppImage --install  # menu entry and icon
-```
-
-Nothing else needed — it carries its own Python and Qt. It starts about 0.2 s
-slower than a pipx install, because the bundle has to mount itself first.
-
-### From a clone, for hacking on it
-
-```bash
-git clone https://github.com/TuranIsmayilov/shotpad.git
-cd shotpad
-python3 -m venv .venv && . .venv/bin/activate
-pip install -e .
-shotpad
-```
-
----
-
-## Updating
-
-Shotpad never checks for updates on its own and never phones home, so new
-versions are something you pull when you want them. `shotpad --version` says
-what you are on; [Releases](https://github.com/TuranIsmayilov/shotpad/releases)
-says what is current.
-
-Your preferences live in `~/.config/Shotpad/Shotpad.conf`, outside the app, so
-none of this touches them.
-
-### pipx
-
-```bash
-pipx upgrade shotpad
-```
-
-That re-pulls the git repository and rebuilds. If it reports nothing to do
-even though the release is newer — pip can decide a direct URL is already
-satisfied when the version number has not moved — force it:
-
-```bash
-pipx install --force git+https://github.com/TuranIsmayilov/shotpad.git
-```
-
-The desktop entry points at pipx's stable `~/.local/bin/shotpad` either way, so
-there is nothing to re-register.
-
-### AppImage
-
-Download the new file from
-[Releases](https://github.com/TuranIsmayilov/shotpad/releases), then:
-
-```bash
-chmod +x Shotpad-1.0.5-x86_64.AppImage
-./Shotpad-1.0.5-x86_64.AppImage --install   # re-point the menu entry
-rm Shotpad-1.0.4-x86_64.AppImage            # the old one, once you are happy
-```
-
-**Re-running `--install` matters here.** The menu entry and any keyboard
-shortcut hold the *absolute path* of the bundle you installed from, and the
-version is in the filename — so a new download leaves them pointing at the old
-file. `--install` rewrites them; a custom Print Screen binding you added
-yourself has to be updated by hand.
-
-To skip that dance entirely, keep the bundle at a fixed path and overwrite it:
-
-```bash
-mv ~/Downloads/Shotpad-1.1.0-x86_64.AppImage ~/.local/bin/shotpad.AppImage
-```
-
-Install once from there and every later update is just that one `mv`.
-
-### From a clone
-
-```bash
-git pull
-pip install -e .    # only if the dependencies changed
-```
-
-An editable install already runs your working tree, so a `git pull` is usually
-the whole update.
 
 ---
 
@@ -515,7 +515,7 @@ The AppImage bundles both. The full licence text of everything inside it is at
 `usr/share/licenses/` within the bundle — read it without installing anything:
 
 ```bash
-./Shotpad-1.0.5-x86_64.AppImage --appimage-extract 'usr/share/licenses/*'
+./Shotpad-1.0.7-x86_64.AppImage --appimage-extract 'usr/share/licenses/*'
 ```
 
 Qt is bundled unmodified and dynamically linked, so you can replace it with
