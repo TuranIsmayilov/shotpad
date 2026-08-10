@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -271,17 +271,24 @@ def color_swatch_pixmap(
     pixmap.fill(Qt.GlobalColor.transparent)
     painter = QPainter(pixmap)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    # Everything below is drawn on the same rect as the chip itself. The chip
+    # is inset by a pixel to leave room for its outline, so a backdrop drawn at
+    # full size would peek out along the right and bottom edges - which reads
+    # as a stray hairline on two sides, not as a backdrop.
+    under = QRectF(0, 0, size - 1, size - 1)
     if backdrop is not None:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(backdrop)
-        painter.drawRoundedRect(0, 0, size, size, 5, 5)
+        painter.drawRoundedRect(under, 5, 5)
     elif color.alpha() < 255:
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QColor(255, 255, 255))
-        painter.drawRoundedRect(0, 0, size, size, 5, 5)
+        painter.drawRoundedRect(under, 5, 5)
         painter.setBrush(QColor(200, 200, 208))
+        painter.setClipRect(under)
         painter.drawRect(0, 0, size // 2, size // 2)
         painter.drawRect(size // 2, size // 2, size // 2, size // 2)
+        painter.setClipping(False)
     painter.setPen(QColor(0, 0, 0, 70))
     if glass:
         from ..render import GLASS_FALLOFF

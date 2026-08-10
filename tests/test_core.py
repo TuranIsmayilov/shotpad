@@ -1073,6 +1073,48 @@ def test_scrollbars_outrank_the_frameless_resize_edge(app):
 # ---------------------------------------------------------------------- OCR
 
 
+def test_swatch_backdrop_never_shows_past_the_chip(app):
+    """The chip is inset by a pixel for its outline; the backdrop must match.
+
+    Drawn at full size it peeked out along the right and bottom edges, which
+    reads as a stray hairline on two sides of every border swatch rather than
+    as a backdrop.
+    """
+    from shotpad.ui.widgets import color_swatch_pixmap
+
+    backdrop = QColor("#ff0000")
+    for glass in (False, True):
+        image = color_swatch_pixmap(
+            QColor("#000000"), 18, 1.0, backdrop, glass
+        ).toImage()
+        # Match on hue, not on the whole colour: the overhang is antialiased,
+        # so the stray pixels are red at a reduced alpha rather than pure red.
+        # Comparing QColors directly would let every one of them through.
+        leaked = [
+            (x, y)
+            for y in range(image.height())
+            for x in range(image.width())
+            if image.pixelColor(x, y).name() == backdrop.name()
+            and image.pixelColor(x, y).alpha() > 0
+        ]
+        assert not leaked, f"backdrop visible at {leaked[:4]} (glass={glass})"
+
+
+def test_translucent_swatch_still_gets_its_checkerboard(app):
+    """Fixing the overhang must not cost the transparency indicator."""
+    from shotpad.ui.widgets import color_swatch_pixmap
+
+    image = color_swatch_pixmap(QColor(0, 0, 0, 40), 18, 1.0).toImage()
+    interior = {
+        image.pixelColor(x, y).name()
+        for y in range(4, 14)
+        for x in range(4, 14)
+    }
+    assert len(interior) > 1, "the checkerboard is gone"
+    # And it must not spill outside the rounded chip either.
+    assert image.pixelColor(17, 17).alpha() == 0
+
+
 def test_ocr_groups_words_into_lines_and_drops_the_doubtful(app):
     """Tesseract emits one TSV row per word; lines are ours to reassemble."""
     from shotpad.ocr import _lines_from
